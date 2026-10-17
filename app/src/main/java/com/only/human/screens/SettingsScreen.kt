@@ -68,7 +68,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenEngine: () -> Unit) {
                     )
                     GroupedRow(
                         "API key",
-                        subtitle = if (cfg.apiKey.isBlank()) "not set — running offline" else "saved on this device",
+                        subtitle = if (cfg.apiKey.isBlank()) "optional — not set" else "saved on this device",
                         showDivider = false,
                         onClick = onOpenEngine,
                     )

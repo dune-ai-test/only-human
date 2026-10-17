@@ -19,7 +19,11 @@ import java.net.URL
  * endpoint. Kilo Gateway is pre-filled because it's the one we test against:
  * https://ai-gateway.kilo.ai/api/v1 (paste an API key in Settings).
  *
- * Offline remains a first-class state: no key, no engine, and the app behaves
+ * The key is optional — local servers (Ollama, LM Studio, llama.cpp) mostly
+ * don't want one; a blank key just means no Authorization header. The model
+ * list is fetched from the endpoint's /v1/models and cached on this device.
+ *
+ * Offline remains a first-class state: engine off, and the app behaves
  * exactly as it always has. Nothing here throws; failures fall back.
  */
 object Engine {
@@ -33,9 +37,9 @@ object Engine {
         val apiKey: String = "",
         val on: Boolean = false,
     ) {
-        /** The whole thing is wired up and switched on. */
+        /** The whole thing is wired up and switched on. A key is optional. */
         val ready: Boolean
-            get() = on && apiKey.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()
+            get() = on && endpoint.isNotBlank() && model.isNotBlank()
     }
 
     var config by mutableStateOf(Config())
@@ -80,7 +84,7 @@ object Engine {
     ): String? = withContext(Dispatchers.IO) {
         val cfg = config
         if (requireEnabled && !cfg.ready) return@withContext null
-        if (cfg.endpoint.isBlank() || cfg.apiKey.isBlank() || cfg.model.isBlank()) {
+        if (cfg.endpoint.isBlank() || cfg.model.isBlank()) {
             lastError = "Engine not configured"
             return@withContext null
         }
@@ -106,7 +110,9 @@ object Engine {
                 readTimeout = 45_000
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Authorization", "Bearer ${cfg.apiKey}")
+                if (cfg.apiKey.isNotBlank()) {
+                    setRequestProperty("Authorization", "Bearer ${cfg.apiKey}")
+                }
             }
             conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             val code = conn.responseCode
@@ -135,7 +141,6 @@ object Engine {
     /** Round-trips a tiny prompt. Returns one line for the settings screen. */
     suspend fun test(): String {
         val cfg = config
-        if (cfg.apiKey.isBlank()) return "Add an API key first."
         if (cfg.endpoint.isBlank() || cfg.model.isBlank()) return "Endpoint and model are required."
         val reply = chat(
             system = "You are a connectivity check. Follow the instruction exactly.",
@@ -149,6 +154,83 @@ object Engine {
         } else {
             "Failed: ${lastError ?: "unknown error"}"
         }
+    }
+
+    /**
+     * GET {endpoint}/models — the standard OpenAI model listing. Returns the
+     * sorted ids, or null — [lastError] carries the human-readable reason.
+     * Never throws.
+     */
+    suspend fun fetchModels(endpoint: String, apiKey: String): List<String>? = withContext(Dispatchers.IO) {
+        val base = normalize(endpoint)
+        if (base.isEmpty()) {
+            lastError = "Add an endpoint first."
+            return@withContext null
+        }
+        try {
+            val conn = (URL("$base/models").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 12_000
+                readTimeout = 30_000
+                if (apiKey.isNotBlank()) {
+                    setRequestProperty("Authorization", "Bearer ${apiKey.trim()}")
+                }
+            }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                lastError = "HTTP $code — ${apiError(text)}"
+                return@withContext null
+            }
+            val arr = JSONObject(text).optJSONArray("data")
+            if (arr == null) {
+                lastError = "Unexpected response — no model list"
+                return@withContext null
+            }
+            val ids = buildList {
+                for (i in 0 until arr.length()) {
+                    val id = arr.optJSONObject(i)?.optString("id")?.trim().orEmpty()
+                    if (id.isNotEmpty()) add(id)
+                }
+            }.distinct().sorted()
+            if (ids.isEmpty()) {
+                lastError = "The endpoint lists no models"
+                return@withContext null
+            }
+            lastError = null
+            ids
+        } catch (e: Exception) {
+            lastError = e.message?.take(140) ?: "Network error"
+            null
+        }
+    }
+
+    /** The model list cached for [endpoint] — empty when none (or the endpoint changed). */
+    fun cachedModels(endpoint: String): List<String> {
+        val p = prefs ?: return emptyList()
+        val forEndpoint = p.getString(KEY_MODELS_ENDPOINT, null) ?: return emptyList()
+        if (forEndpoint != normalize(endpoint)) return emptyList()
+        val json = p.getString(KEY_MODELS, null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(json)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val id = arr.optString(i).trim()
+                    if (id.isNotEmpty()) add(id)
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Keeps the fetched list around for next time. */
+    fun cacheModels(endpoint: String, models: List<String>) {
+        prefs?.edit()
+            ?.putString(KEY_MODELS_ENDPOINT, normalize(endpoint))
+            ?.putString(KEY_MODELS, JSONArray(models).toString())
+            ?.apply()
     }
 
     // ---- persona prompting -------------------------------------------------
@@ -180,9 +262,11 @@ object Engine {
     // ---- internals ---------------------------------------------------------
 
     private fun chatUrl(endpoint: String): String {
-        val base = endpoint.trim().trimEnd('/')
+        val base = normalize(endpoint)
         return if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
     }
+
+    private fun normalize(endpoint: String): String = endpoint.trim().trimEnd('/')
 
     private fun apiError(body: String): String = try {
         val obj = JSONObject(body)
@@ -210,4 +294,6 @@ object Engine {
     private const val KEY_MODEL = "engineModel"
     private const val KEY_KEY = "engineKey"
     private const val KEY_ON = "engineOn"
+    private const val KEY_MODELS = "engineModels"
+    private const val KEY_MODELS_ENDPOINT = "engineModelsEndpoint"
 }
