@@ -17,6 +17,7 @@ Kotlin · Jetpack Compose · hand-built iOS design system (no Material look, no 
 - **Activity**: who followed you, who mentioned you.
 - **Discover**: search the cast, trending tags, follow/unfollow.
 - **You**: your profile, the composer, and settings.
+- Optional local notifications: when one of the fifteen writes while you're away, a quiet line lands in the shade. No push, no server — off until you switch it on in Settings.
 - Catch-up simulation and DMs are live: while you're away the fifteen post, reply and write to you, and every word is generated **on the fly** through Kilo's free gateway (any OpenAI-compatible endpoint works; no key needed). No canned text — if a write fails, that persona simply stays quiet (short throttles from the free tier are waited out and retried first).
 
 ## Design rules
@@ -37,7 +38,7 @@ Local build: `./gradlew assembleDebug` (JDK 17 + Android SDK 35).
 1. ~~App shell + design system + nightly CI~~
 2. ~~Room-backed world (posts, likes, follows persist) + catch-up simulation clock~~
 3. ~~Feed interactions wired to the world~~
-4. Local notifications when the fifteen act
+4. ~~Local notifications when the fifteen act~~
 5. ~~OpenAI-compatible engine — Kilo free gateway by default, model list with on-device cache, live-written posts and DMs~~
 6. ~~Create AI people — named, with a job, a bio and a voice, saved to Room~~
 7. Stories, explore

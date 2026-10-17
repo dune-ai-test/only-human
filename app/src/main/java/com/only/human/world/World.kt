@@ -69,6 +69,10 @@ object World {
 
     /** The last time you looked at the Activity tab. Drives the tab badge. */
     var activitySeenAt by mutableStateOf(0L)
+
+    /** Local notifications while you're away — off until you switch them on. */
+    var notifyEnabled by mutableStateOf(false)
+        private set
         private set
 
     /** You, as the rest of the app sees you. */
@@ -86,6 +90,8 @@ object World {
 
     private var database: OhDatabase? = null
     private var prefs: SharedPreferences? = null
+    private var appContext: Context? = null
+    private var appVisible = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var postSeq = 0
 
@@ -95,6 +101,7 @@ object World {
     private const val KEY_ME_HANDLE = "meHandle"
     private const val KEY_ME_AVATAR = "meAvatar"
     private const val KEY_ACTIVITY_SEEN = "activitySeenAt"
+    private const val KEY_NOTIFY = "notifyMe"
 
     init {
         Cast.people.forEach {
@@ -133,6 +140,8 @@ object World {
             onboarded = true
         }
         activitySeenAt = p.getLong(KEY_ACTIVITY_SEEN, 0L)
+        notifyEnabled = p.getBoolean(KEY_NOTIFY, false)
+        appContext = context.applicationContext
 
         scope.launch {
             val dao = db.dao()
@@ -314,6 +323,24 @@ object World {
         prefs?.edit()?.putLong(KEY_LAST_VISIT, System.currentTimeMillis())?.apply()
     }
 
+    /** True while the app is on screen — notifications only ping when it isn't. */
+    fun setVisible(visible: Boolean) {
+        appVisible = visible
+    }
+
+    fun setNotifyEnabled(enabled: Boolean) {
+        if (notifyEnabled == enabled) return
+        notifyEnabled = enabled
+        prefs?.edit()?.putBoolean(KEY_NOTIFY, enabled)?.apply()
+    }
+
+    /** One quiet line in the shade — only if they're welcome and you're gone. */
+    private fun tell(title: String, body: String, tag: String) {
+        if (!notifyEnabled || appVisible) return
+        val ctx = appContext ?: return
+        Notifier.post(ctx, tag, title, body.take(180))
+    }
+
     /**
      * The time you were away: metrics first (likes on existing text,
      * follows), then every word that needs writing is actually written —
@@ -419,6 +446,7 @@ object World {
                     activities.add(0, item)
                 }
             }
+            tell(persona.name, text, "reply-$authorId")
         }
     }
 
@@ -532,6 +560,7 @@ object World {
                 activities.add(0, item)
             }
         }
+        tell(persona.name, text, "dm-$personaId")
     }
 
     private suspend fun engineDmReply(persona: Persona, history: List<Pair<String, String>>): String? {

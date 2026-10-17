@@ -25,8 +25,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        World.setVisible(true)
+    }
+
     override fun onStop() {
         super.onStop()
+        World.setVisible(false)
         // The next launch simulates the gap between this moment and then.
         World.markAway()
     }
