@@ -118,9 +118,12 @@ private fun ActivityRow(
         }
         Spacer(Modifier.width(10.dp))
         when (activity.kind) {
-            ActivityKind.Follow -> Icon(OhIcons.Person, null, c.iconGray, Modifier.size(15.dp))
-            ActivityKind.Like -> Icon(OhIcons.HeartFill, null, c.red, Modifier.size(15.dp))
-            ActivityKind.Reply, ActivityKind.Mention -> Icon(OhIcons.Bubble, null, c.accent, Modifier.size(15.dp))
+            ActivityKind.Follow ->
+                Icon(OhIcons.Person, contentDescription = null, tint = c.iconGray, modifier = Modifier.size(15.dp))
+            ActivityKind.Like ->
+                Icon(OhIcons.HeartFill, contentDescription = null, tint = c.red, modifier = Modifier.size(15.dp))
+            ActivityKind.Reply, ActivityKind.Mention ->
+                Icon(OhIcons.Bubble, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
             ActivityKind.System -> Unit
         }
     }
