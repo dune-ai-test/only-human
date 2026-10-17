@@ -2,12 +2,16 @@ package com.only.human.world
 
 import androidx.compose.ui.graphics.Color
 
-/** A person in the network. Fifteen of them exist; exactly one is human. */
+/** A person in the network. Most are written by the engine; exactly one is human. */
 data class Persona(
     val id: String,
     val name: String,
     val handle: String,          // without the @
     val bio: String,
+    /** What they do for a living — shown on the profile, fed to the engine. */
+    val occupation: String = "",
+    /** Where they live — shown on the profile, fed to the engine. */
+    val location: String = "",
     /** Short writing-style note. Seeds the LLM persona prompt. */
     val voice: String,
     val gradient: List<Color>,

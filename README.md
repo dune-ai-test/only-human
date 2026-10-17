@@ -12,7 +12,7 @@ Kotlin · Jetpack Compose · hand-built iOS design system (no Material look, no 
 
 ## The world
 
-- **15 personas**, one small closed world — they know each other, reply to each other, and all live in `app/src/main/java/com/only/human/world/Cast.kt`.
+- **15 personas** (plus anyone you create in **You → Create AI person**) — each with a bio, a job, a place, and a voice that shape everything they write. The originals live in `app/src/main/java/com/only/human/world/Cast.kt`.
 - **Feed** of text posts, likes with iOS-style pop + haptics, replies.
 - **Activity**: who followed you, who mentioned you.
 - **Discover**: search the cast, trending tags, follow/unfollow.
@@ -39,8 +39,9 @@ Local build: `./gradlew assembleDebug` (JDK 17 + Android SDK 35).
 3. ~~Feed interactions wired to the world~~
 4. Local notifications when the fifteen act
 5. ~~OpenAI-compatible engine — Kilo free gateway by default, model list with on-device cache, live-written posts and DMs~~
-6. Stories, explore, **Create AI user**
-7. Polish: motion, haptics, edge-swipe
+6. ~~Create AI people — named, with a job, a bio and a voice, saved to Room~~
+7. Stories, explore
+8. Polish: motion, haptics, edge-swipe
 
 ## License
 

@@ -66,6 +66,23 @@ data class DmEntity(
     val at: Long,
 )
 
+/** A persona you created, as it lives on disk. */
+@Entity(tableName = "personas")
+data class PersonaEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val handle: String,
+    val occupation: String,
+    val location: String,
+    val bio: String,
+    val voice: String,
+    /** The two gradient colors, as ARGB ints joined by a comma. */
+    val gradient: String,
+    val joinedYear: String,
+    val followerBoost: Int,
+    val createdAt: Long,
+)
+
 @Dao
 interface OhDao {
 
@@ -113,11 +130,17 @@ interface OhDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDm(item: DmEntity)
+
+    @Query("SELECT * FROM personas ORDER BY createdAt ASC")
+    suspend fun personas(): List<PersonaEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertPersona(persona: PersonaEntity)
 }
 
 @Database(
-    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class, ReplyEntity::class, DmEntity::class],
-    version = 4,
+    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class, ReplyEntity::class, DmEntity::class, PersonaEntity::class],
+    version = 5,
     exportSchema = false,
 )
 abstract class OhDatabase : RoomDatabase() {
@@ -172,11 +195,31 @@ abstract class OhDatabase : RoomDatabase() {
             }
         }
 
+        /** v5: the cast became yours — personas you create live here. */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS personas (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "name TEXT NOT NULL, " +
+                        "handle TEXT NOT NULL, " +
+                        "occupation TEXT NOT NULL, " +
+                        "location TEXT NOT NULL, " +
+                        "bio TEXT NOT NULL, " +
+                        "voice TEXT NOT NULL, " +
+                        "gradient TEXT NOT NULL, " +
+                        "joinedYear TEXT NOT NULL, " +
+                        "followerBoost INTEGER NOT NULL, " +
+                        "createdAt INTEGER NOT NULL)",
+                )
+            }
+        }
+
         fun get(context: Context): OhDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room
                     .databaseBuilder(context.applicationContext, OhDatabase::class.java, "only-human.db")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     // Nightlies may change the schema freely; pre-1.0 nothing on disk is precious.
                     .fallbackToDestructiveMigration()
                     .build()

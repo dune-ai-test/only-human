@@ -248,6 +248,11 @@ object Engine {
         return buildString {
             append("You are ${persona.name}, @${persona.handle}, on a tiny social app called Only Human.\n")
             append("About you: ${persona.bio}\n")
+            if (persona.occupation.isNotEmpty()) {
+                append("What you do: ${persona.occupation}")
+                if (persona.location.isNotEmpty()) append(", living in ${persona.location}")
+                append(" — it colors what you notice and what you post about.\n")
+            }
             append("Your writing style — this defines you: ${persona.voice}.\n")
             append("The person you're writing to is ${me.name}, @${me.handle} — the only human on the app, and your new neighbor. Everyone else here is part of your small circle of friends.\n")
             if (ties.isNotEmpty()) append("People you know:\n$ties\n")

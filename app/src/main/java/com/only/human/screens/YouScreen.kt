@@ -40,6 +40,7 @@ import com.only.human.world.World
 fun YouScreen(
     onOpenSettings: () -> Unit,
     onOpenEngine: () -> Unit,
+    onCreatePersona: () -> Unit,
     onCompose: () -> Unit,
     onOpenPost: (String) -> Unit,
 ) {
@@ -133,6 +134,13 @@ fun YouScreen(
                         trailing = { RowChevron() },
                         showDivider = true,
                         onClick = onOpenEngine,
+                    )
+                    GroupedRow(
+                        title = "Create AI person",
+                        subtitle = "a new resident — work, voice, the whole person",
+                        trailing = { RowChevron() },
+                        showDivider = true,
+                        onClick = onCreatePersona,
                     )
                     GroupedRow(
                         title = "About Only Human",

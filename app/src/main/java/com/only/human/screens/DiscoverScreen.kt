@@ -48,10 +48,11 @@ fun DiscoverScreen(onOpenProfile: (String) -> Unit) {
     var query by rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
     var segment by rememberSaveable { mutableIntStateOf(0) }
 
-    val filtered = remember(query) {
+    val people = Cast.people
+    val filtered = remember(query, people) {
         val q = query.trim().lowercase()
-        if (q.isEmpty()) Cast.people
-        else Cast.people.filter {
+        if (q.isEmpty()) people
+        else people.filter {
             it.name.lowercase().contains(q) || it.handle.lowercase().contains(q)
         }
     }
@@ -87,7 +88,7 @@ fun DiscoverScreen(onOpenProfile: (String) -> Unit) {
                 if (filtered.isEmpty()) {
                     item(key = "empty") {
                         Text(
-                            "No one by that name. (There are only fifteen of us.)",
+                            "No one by that name — yet.",
                             style = type.footnote,
                             color = colors.labelSecondary,
                             modifier = Modifier.padding(horizontal = 32.dp, vertical = 24.dp),

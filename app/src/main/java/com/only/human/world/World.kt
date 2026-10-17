@@ -7,11 +7,14 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import com.only.human.data.ActivityEntity
 import com.only.human.data.DmEntity
 import com.only.human.data.FollowEntity
 import com.only.human.data.OhDao
 import com.only.human.data.OhDatabase
+import com.only.human.data.PersonaEntity
 import com.only.human.data.PostEntity
 import com.only.human.data.ReplyEntity
 import kotlinx.coroutines.CoroutineScope
@@ -130,7 +133,6 @@ object World {
             onboarded = true
         }
         activitySeenAt = p.getLong(KEY_ACTIVITY_SEEN, 0L)
-        Cast.people.forEach { dmSeen[it.id] = p.getLong("dmSeen_${it.id}", 0L) }
 
         scope.launch {
             val dao = db.dao()
@@ -146,6 +148,13 @@ object World {
 
             val lastVisit = prefs?.getLong(KEY_LAST_VISIT, 0L) ?: 0L
             val now = System.currentTimeMillis()
+            // The cast you built comes back first, so they take part in the
+            // catch-up like everyone else; their seen-markers come back too.
+            val storedPersonas = dao.personas().map { it.toModel() }
+            withContext(Dispatchers.Main) {
+                Cast.setCustom(storedPersonas)
+                Cast.all.forEach { dmSeen[it.id] = p.getLong("dmSeen_${it.id}", 0L) }
+            }
             if (!firstRun && lastVisit in 1 until now) {
                 runCatchUp(dao, lastVisit, now)
             }
@@ -222,6 +231,79 @@ object World {
         // you move in. And the rest of the neighborhood is waking up.
         welcomeDm("sofia")
         warmUpWorld()
+    }
+
+    /**
+     * Someone new joins the neighborhood: saved to Room, follows you right
+     * away, and their first post is written for real seconds later.
+     * Returns the new persona's id, or null when the name or handle can't work.
+     */
+    fun createPersona(
+        name: String,
+        handle: String,
+        occupation: String,
+        location: String,
+        bio: String,
+        voice: String,
+        gradientIndex: Int,
+    ): String? {
+        val cleanName = name.trim().take(24)
+        val cleanHandle = handle.trim().lowercase().removePrefix("@")
+            .filter { it.isLetterOrDigit() || it == '_' }.take(16)
+        if (cleanName.isEmpty() || cleanHandle.length < 3) return null
+        if (cleanHandle == me.handle) return null
+        if (Cast.people.any { it.handle.equals(cleanHandle, ignoreCase = true) }) return null
+
+        val id = "ai-$cleanHandle"
+        val persona = Persona(
+            id = id,
+            name = cleanName,
+            handle = cleanHandle,
+            bio = bio.trim().take(150).ifEmpty { "new in the neighborhood." },
+            occupation = occupation.trim().take(60),
+            location = location.trim().take(40),
+            voice = voice.trim().take(220).ifEmpty { "warm, casual, writes short lowercase lines" },
+            gradient = Cast.avatarPalettes[gradientIndex.coerceIn(0, Cast.avatarPalettes.size - 1)],
+            joinedYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString(),
+            followerBoost = 0,
+        )
+        Cast.addCustom(persona)
+        following[id] = false
+        followedBy[id] = true
+
+        val item = ActivityItem(
+            id = "joined-$id-${System.currentTimeMillis()}",
+            personaId = id,
+            boldPart = cleanName,
+            rest = " just moved in and followed you",
+            createdAt = System.currentTimeMillis(),
+            kind = ActivityKind.Follow,
+        )
+        activities.add(0, item)
+        persistActivity(item)
+
+        scope.launch {
+            val dao = database?.dao() ?: return@launch
+            dao.upsertPersona(persona.toEntity())
+            dao.upsertFollow(FollowEntity(id, false, true))
+        }
+
+        // They say hello to the feed in their own voice — written live.
+        scope.launch {
+            delay((2_000L..5_000L).random())
+            val text = writePostText(persona) ?: return@launch
+            val post = Post(
+                id = "intro-$id-${System.currentTimeMillis()}",
+                authorId = id,
+                text = text,
+                createdAt = System.currentTimeMillis(),
+                likes = 0,
+                replies = 0,
+            )
+            persistPost(post)
+            withContext(Dispatchers.Main) { insertPost(post) }
+        }
+        return id
     }
 
     /**
@@ -770,3 +852,40 @@ private fun DmEntity.toModel() = Dm(
     text = text,
     at = at,
 )
+
+private fun Persona.toEntity() = PersonaEntity(
+    id = id,
+    name = name,
+    handle = handle,
+    occupation = occupation,
+    location = location,
+    bio = bio,
+    voice = voice,
+    gradient = gradient.take(2).joinToString(",") { it.toArgb().toString() },
+    joinedYear = joinedYear,
+    followerBoost = followerBoost,
+    createdAt = System.currentTimeMillis(),
+)
+
+private fun PersonaEntity.toModel() = Persona(
+    id = id,
+    name = name,
+    handle = handle,
+    bio = bio,
+    occupation = occupation,
+    location = location,
+    voice = voice,
+    gradient = decodeGradient(gradient),
+    joinedYear = joinedYear,
+    followerBoost = followerBoost,
+)
+
+/** Two ARGB ints, comma-separated — how gradients survive Room. */
+private fun decodeGradient(raw: String): List<Color> {
+    val parsed = raw.split(",").mapNotNull { it.trim().toLongOrNull()?.toInt() }
+    return when {
+        parsed.size >= 2 -> listOf(Color(parsed[0]), Color(parsed[1]))
+        parsed.size == 1 -> listOf(Color(parsed[0]), Color(parsed[0]))
+        else -> Cast.avatarPalettes.first()
+    }
+}

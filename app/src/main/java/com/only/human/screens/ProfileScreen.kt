@@ -92,6 +92,13 @@ private fun ProfileCard(persona: Persona, onOpenDm: (String) -> Unit) {
         Spacer(Modifier.height(12.dp))
         Text(persona.name, style = t.title2, color = c.label, textAlign = TextAlign.Center)
         Text("@${persona.handle}", style = t.subheadline, color = c.labelSecondary)
+        val aboutLine = listOf(persona.occupation, persona.location)
+            .filter { it.isNotEmpty() }
+            .joinToString(" · ")
+        if (aboutLine.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text(aboutLine, style = t.footnote, color = c.labelSecondary)
+        }
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
             StatColumn(World.postsBy(persona.id).size.toString(), "Posts")

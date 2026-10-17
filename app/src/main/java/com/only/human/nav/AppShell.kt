@@ -33,6 +33,7 @@ import com.only.human.design.components.LocalTabBarInset
 import com.only.human.design.components.OhIcons
 import com.only.human.design.components.TabSpec
 import com.only.human.screens.ComposerSheet
+import com.only.human.screens.CreatePersonaScreen
 import com.only.human.screens.DiscoverScreen
 import com.only.human.screens.DmScreen
 import com.only.human.screens.EngineScreen
@@ -54,6 +55,7 @@ sealed interface Route {
     data object Messages : Route
     data object Settings : Route
     data object Engine : Route
+    data object CreatePersona : Route
 }
 
 /** Route + stack depth — depth drives push/pop animation direction. */
@@ -139,6 +141,7 @@ fun AppShell() {
                         else -> YouScreen(
                             onOpenSettings = { nav.push(Route.Settings) },
                             onOpenEngine = { nav.push(Route.Engine) },
+                            onCreatePersona = { nav.push(Route.CreatePersona) },
                             onCompose = { composerOpen = true },
                             onOpenPost = { nav.push(Route.Post(it)) },
                         )
@@ -167,6 +170,13 @@ fun AppShell() {
                         onOpenEngine = { nav.push(Route.Engine) },
                     )
                     Route.Engine -> EngineScreen(onBack = { nav.pop() })
+                    Route.CreatePersona -> CreatePersonaScreen(
+                        onBack = { nav.pop() },
+                        onCreated = { id ->
+                            nav.pop()
+                            nav.push(Route.Person(id))
+                        },
+                    )
                 }
             }
 
