@@ -72,20 +72,74 @@ console.log("create:", created.status, created.data.worldId ? "world + key ok" :
 const { worldId, key } = created.data;
 if (!worldId) process.exit(1);
 
-const sync = async () => (await post("/v1/sync", { worldId, key, cursor: 0 })).data;
+const sync = async (cursor = 0) => (await post("/v1/sync", { worldId, key, cursor })).data;
 
-console.log("first sync:", (await sync()).items.length, "items (the world is waking up)");
+const first = await sync();
+console.log("first sync:", first.items.length, "items (the world is waking up)");
+console.log("me:", first.me, "budget:", first.budget);
+console.log(
+  "cast shipped:",
+  first.items.filter((it) => it.kind === "persona").length,
+  "personas,",
+  first.items.filter((it) => it.kind === "follow").length,
+  "follows",
+);
 
+// The phone makes ids so its copy shows instantly; the world adopts them.
+const clientPostId = "s-post-" + crypto.randomUUID();
 const mine = await post("/v1/act", {
   worldId,
   key,
   action: "post",
   commandId: crypto.randomUUID(),
-  payload: { text: "hello, anyone out there?" },
+  payload: { id: clientPostId, text: "hello, anyone out there?" },
 });
-console.log("my post:", mine.status, mine.data);
+const adopted = (await sync()).items.some((it) => it.kind === "post" && it.data.id === clientPostId);
+console.log("my post:", mine.status, mine.data, "— phone id adopted:", adopted);
 
-for (let i = 0; i < 12; i++) {
+const modeled = await post("/v1/act", {
+  worldId,
+  key,
+  action: "set_model",
+  commandId: crypto.randomUUID(),
+  payload: { personaId: "sam", model: "poolside/laguna-s-2.1:free" },
+});
+const modelItem = (await sync()).items.find((it) => it.kind === "model");
+console.log("set_model:", modeled.status, "— model item:", modelItem?.data ?? "MISSING");
+
+const joined = await post("/v1/act", {
+  worldId,
+  key,
+  action: "create_persona",
+  commandId: crypto.randomUUID(),
+  payload: {
+    id: "ai-nadiawrites",
+    name: "Nadia",
+    handle: "nadiawrites",
+    bio: "new in town",
+    occupation: "archivist",
+    location: "Utrecht",
+    voice: "quiet, curious",
+    gradient: ["#FFB199", "#FF5E7E"],
+    joinedYear: "2026",
+    followerBoost: 0,
+  },
+});
+const afterJoin = (await sync()).items;
+const joinFollow = afterJoin.find((it) => it.kind === "follow" && it.data.personaId === "ai-nadiawrites");
+const joinSignal = afterJoin.find((it) => it.kind === "signal" && String(it.data.rest).includes("just moved in"));
+console.log(
+  "create_persona:",
+  joined.status,
+  joined.data.id,
+  "— follow:",
+  joinFollow?.data ?? "MISSING",
+  "— join signal:",
+  joinSignal ? "ok" : "MISSING",
+);
+
+let approved = false;
+for (let i = 0; i < 18; i++) {
   await new Promise((r) => setTimeout(r, 10_000));
   if (pulse) {
     try {
@@ -97,16 +151,25 @@ for (let i = 0; i < 12; i++) {
   const s = await sync();
   const asks = s.items.filter((it) => it.kind === "ask" && it.data.state === "pending");
   const posts = s.items.filter((it) => it.kind === "post");
-  console.log(`sync #${i + 1}: ${s.items.length} items (${posts.length} posts, ${asks.length} pending asks)`);
-  if (asks.length) {
-    const approved = await post("/v1/act", {
+  const replies = s.items.filter((it) => it.kind === "reply");
+  console.log(
+    `sync #${i + 1}: ${s.items.length} items (${posts.length} posts, ${replies.length} replies, ${asks.length} pending asks)`,
+  );
+  if (!approved && asks.length) {
+    const done = await post("/v1/act", {
       worldId,
       key,
       action: "approve",
       commandId: crypto.randomUUID(),
       payload: { askId: asks[0].data.id },
     });
-    console.log("approve:", approved.status, approved.data, "— a reply should land in a minute or two");
+    console.log("approve:", done.status, done.data, "— waiting for the real words");
+    approved = true;
+    continue;
+  }
+  if (approved && replies.length) {
+    const reply = replies[replies.length - 1];
+    console.log("reply landed:", reply.data.authorId, JSON.stringify(reply.data.text));
     break;
   }
 }
