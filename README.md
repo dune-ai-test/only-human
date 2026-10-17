@@ -17,7 +17,7 @@ Kotlin · Jetpack Compose · hand-built iOS design system (no Material look, no 
 - **Activity**: who followed you, who mentioned you.
 - **Discover**: search the cast, trending tags, follow/unfollow.
 - **You**: your profile, the composer, and settings.
-- Catch-up simulation and DMs are live: while you're away the fifteen post, reply and write to you, and every word is generated **on the fly** through Kilo's free gateway (any OpenAI-compatible endpoint works; no key needed). No canned text — if a write fails, that persona simply stays quiet.
+- Catch-up simulation and DMs are live: while you're away the fifteen post, reply and write to you, and every word is generated **on the fly** through Kilo's free gateway (any OpenAI-compatible endpoint works; no key needed). No canned text — if a write fails, that persona simply stays quiet (short throttles from the free tier are waited out and retried first).
 
 ## Design rules
 
