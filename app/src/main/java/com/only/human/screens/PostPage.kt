@@ -77,7 +77,7 @@ fun PostPage(postId: String, onBack: () -> Unit, onOpenProfile: (String) -> Unit
                 ),
             ) {
                 item(key = "post") { PostHeader(post, onOpenProfile) }
-                if (replies.isEmpty()) {
+                if (replies.isEmpty() && post.replies == 0) {
                     item(key = "empty") {
                         Text(
                             "No replies yet. Yours would be first.",
