@@ -1,7 +1,8 @@
 # Only Human — World Server
 
-**Status:** agreed direction, pre-implementation. This doc is the contract —
-anything unclear gets decided here before code exists.
+**Status:** phase 1 implemented — the worker lives in `server/` of this repo.
+The contract below is binding; sections that were open at design time are
+marked settled where implementation resolved them.
 
 **Decisions locked so far**
 
@@ -53,8 +54,10 @@ phone (window)  ⇄  Worker API  ⇄  D1 (the world)
 
 ## 3. Architecture
 
-- One Worker = API + cron. A **cron trigger every 10 minutes** wakes the
-  system; each invocation processes the worlds that are due.
+- One Worker = API + cron. A **cron trigger every minute** runs whatever is
+  due: world ticks (each scheduled 10–40 minutes out), plus interactive jobs
+  (replies, comment writes, warm-up). The world sleeping is free — the
+  minute beat is just a due-check.
 - **D1** holds every world: people, content, asks, follow state, activity,
   budgets, context, and the sync feed.
 - Model calls go from the Worker to the same OpenAI-compatible gateway the
@@ -75,8 +78,10 @@ phone (window)  ⇄  Worker API  ⇄  D1 (the world)
   sleeps — no posts, no DMs. The next tick is scheduled for morning. Intent,
   not idleness.
 - **Interactive actions never wait for ticks.** When you DM someone or reply,
-  the server schedules the response job immediately — 10–40 s later, the same
-  feel as today — processed by the same single-flight writer.
+  the server schedules the response job on the spot — it lands within a
+  minute or two (the heartbeat's granularity), processed by the same
+  single-flight writer. Slow enough to feel like a person, fast enough to
+  feel connected.
 
 ## 5. The director
 
@@ -103,7 +108,8 @@ Rules decide when and what kind; the model only writes the words.
 - `personas` — world_id, id, name, handle, bio, occupation, location, voice,
   gradient, joined_year, follower_boost, **model**, custom
 - `posts`, `replies`, `stories`, `dms` — content, same fields the app has today
-- `comment_asks` — post_id, persona_id, at, state (pending/posted/skipped)
+- `comment_asks` — post_id, persona_id, at, state (pending → approved →
+  posted, or skipped; a failed write returns the ask to pending)
 - `follows` — per persona: you-follow / follows-you
 - `activity` — the rows the Activity tab already shows
 - `context` — news/weather/user notes feeding prompts
@@ -118,11 +124,14 @@ Rules decide when and what kind; the model only writes the words.
   items only: post, comment, story, message (+ asks, activity signals, and
   later "right now" status). Opaque cursor; no timestamps in the protocol.
 - `POST /v1/act` `{worldId, key, action, payload, commandId}` — post, reply,
-  dm, follow, like, approve, skip, set_model, budget, note. Idempotent by
-  commandId.
+  dm, follow, like, approve, skip, set_model, budget, note, create_persona.
+  Idempotent by commandId.
+- `POST /v1/export` — full JSON dump of a world.
+- `POST /v1/delete` `{…, confirm:"delete"}` — hard delete.
 - `GET /v1/health`.
 
-Auth is worldId + key headers. No accounts, no passwords, no email.
+Auth is worldId + key in each request body. No accounts, no passwords, no
+email.
 
 ## 8. Identity & recovery
 
@@ -192,19 +201,24 @@ Auth is worldId + key headers. No accounts, no passwords, no email.
 ## 15. Build order
 
 1. **World core** — Worker + D1: creation, clock, director, engine, sync,
-   act. App gains world-server settings + sync; the local sim retires once
-   server mode is proven on device.
+   act. Implementation lives in `server/` of this repo; its workflow
+   type-checks and dry-run deploys on every push to `world-server`. App gains
+   world-server settings + sync; the local sim retires once server mode is
+   proven on device.
 2. **FCM notifications.**
 3. **Context feed + your notes.**
 4. **World tab.**
 
 ## 16. Open points
 
-- Cron cadence: start at 10 minutes.
+- Cron cadence: **settled** — one-minute heartbeat + a job queue; world
+  ticks themselves stay 10–40 minutes apart.
 - Daily budget: default 200/day, ceiling 1000, adjustable in Settings
   (per-world `act`) — tune the default with real usage.
-- Recovery code format: word list vs base32.
-- Activity signals ride sync as-is (small); confirm during phase 1.
+- Recovery code format: **settled** — base32 recovery key (typed-friendly
+  groups), only its hash is stored server-side.
+- Activity signals ride sync as-is as `signal` items — **confirmed in
+  phase 1**.
 - Public read-only "site" of a world: later, opt-in only.
 - Render fallback only if Cloudflare dead-ends; the storage layer is the
   port, nothing else.

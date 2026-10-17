@@ -1,0 +1,505 @@
+/**
+ * The HTTP contract, exactly as docs/world-server.md describes it:
+ *   POST /v1/worlds  — create a world (ships the cast + your name/handle)
+ *   POST /v1/sync    — pull everything since the cursor
+ *   POST /v1/act     — post, reply, dm, follow, like, approve, skip, …
+ *   POST /v1/export  — a JSON dump of everything
+ *   POST /v1/delete  — hard delete, with confirm
+ */
+
+import {
+  getFollows,
+  getPersona,
+  getPersonas,
+  insertDm,
+  insertPost,
+  insertReply,
+  push,
+  pushPostUpdate,
+  resetDayIfNeeded,
+  schedule,
+  setFollow,
+} from "./db";
+import type { AskRow, Env, PostRow, ReplyRow, WorldRow } from "./types";
+import { clamp, dayKey, hashKey, newId, newRecoveryKey, now, randInt, sameHash, json } from "./util";
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function shuffled<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = randInt(0, i);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+interface ParsedPersona {
+  id: string;
+  name: string;
+  handle: string;
+  bio: string;
+  occupation: string;
+  location: string;
+  voice: string;
+  gradient: string;
+  joinedYear: string;
+  followerBoost: number;
+  custom: number;
+}
+
+function parsePersona(raw: Record<string, unknown>, fallbackId: string, custom = false): ParsedPersona | null {
+  const name = str(raw["name"]).trim();
+  const handle = str(raw["handle"]).replace(/^@+/, "").trim();
+  if (!name || !handle) return null;
+  const gradient = Array.isArray(raw["gradient"])
+    ? (raw["gradient"] as unknown[]).filter((c): c is string => typeof c === "string").slice(0, 4)
+    : [];
+  const boost = Number(raw["followerBoost"]);
+  return {
+    id: str(raw["id"]).trim() || fallbackId,
+    name,
+    handle,
+    bio: str(raw["bio"]).trim(),
+    occupation: str(raw["occupation"]).trim(),
+    location: str(raw["location"]).trim(),
+    voice: str(raw["voice"]).trim(),
+    gradient: JSON.stringify(gradient),
+    joinedYear: str(raw["joinedYear"]).trim(),
+    followerBoost: Number.isFinite(boost) ? Math.round(boost) : 0,
+    custom: custom ? 1 : 0,
+  };
+}
+
+async function authenticate(env: Env, body: Record<string, unknown>): Promise<WorldRow | null> {
+  const worldId = str(body["worldId"]);
+  const key = str(body["key"]);
+  if (!worldId || !key) return null;
+  const world = await env.DB.prepare("SELECT * FROM worlds WHERE id = ?").bind(worldId).first<WorldRow>();
+  if (!world) return null;
+  const row = await env.DB.prepare("SELECT key_hash FROM world_keys WHERE world_id = ?")
+    .bind(worldId)
+    .first<{ key_hash: string }>();
+  if (!row) return null;
+  const hash = await hashKey(key);
+  if (!sameHash(hash, row.key_hash)) return null;
+  return world;
+}
+
+// ---- create --------------------------------------------------------------
+
+export async function handleCreate(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const me = (body["me"] ?? {}) as Record<string, unknown>;
+  const meName = str(me["name"]).trim();
+  const meHandle = str(me["handle"]).replace(/^@+/, "").trim();
+  if (!meName || !meHandle) return json({ error: "name and handle required" }, 400);
+
+  const avatarRaw = Number(me["avatarIndex"]);
+  const avatar = Number.isFinite(avatarRaw) ? clamp(Math.round(avatarRaw), 0, 63) : 0;
+  const offsetRaw = Number(body["utcOffsetMinutes"]);
+  const offset = Number.isFinite(offsetRaw) ? clamp(Math.round(offsetRaw), -840, 840) : 0;
+
+  const rawPersonas = Array.isArray(body["personas"]) ? (body["personas"] as Record<string, unknown>[]) : [];
+  const parsed = rawPersonas
+    .map((p, i) => parsePersona(p, `p${i}`))
+    .filter((p): p is ParsedPersona => p !== null)
+    .slice(0, 64);
+  if (parsed.length === 0) return json({ error: "at least one persona required" }, 400);
+
+  const rawRelations = Array.isArray(body["relations"]) ? (body["relations"] as Record<string, unknown>[]) : [];
+  const relations = rawRelations
+    .map((r) => ({ a: str(r["a"]).trim(), b: str(r["b"]).trim(), label: str(r["label"]).trim() }))
+    .filter((r) => r.a && r.b && r.label)
+    .slice(0, 200);
+
+  const following = (body["following"] ?? {}) as Record<string, unknown>;
+  const followedBy = (body["followedBy"] ?? {}) as Record<string, unknown>;
+  const known = new Set(parsed.map((p) => p.id));
+  const followIds = [...new Set([...Object.keys(following), ...Object.keys(followedBy)])].filter((id) =>
+    known.has(id),
+  );
+
+  const worldId = crypto.randomUUID();
+  const key = newRecoveryKey();
+  const keyHash = await hashKey(key);
+  const t = now();
+
+  const stmts: D1PreparedStatement[] = [
+    env.DB.prepare(
+      "INSERT INTO worlds (id, created_at, utc_offset, me_name, me_handle, me_avatar, next_tick_at, quiet_until, calls_today, calls_day, daily_budget, last_contact_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 200, ?)",
+    ).bind(worldId, t, offset, meName, meHandle, avatar, dayKey(t, offset), t),
+    env.DB.prepare("INSERT INTO world_keys (world_id, key_hash) VALUES (?, ?)").bind(worldId, keyHash),
+  ];
+
+  const personaInsert =
+    "INSERT OR IGNORE INTO personas (world_id, id, name, handle, bio, occupation, location, voice, gradient, joined_year, follower_boost, model, custom) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)";
+  for (const p of parsed) {
+    stmts.push(
+      env.DB.prepare(personaInsert).bind(
+        worldId,
+        p.id,
+        p.name,
+        p.handle,
+        p.bio,
+        p.occupation,
+        p.location,
+        p.voice,
+        p.gradient,
+        p.joinedYear,
+        p.followerBoost,
+        p.custom,
+      ),
+    );
+  }
+  for (const r of relations) {
+    stmts.push(
+      env.DB.prepare("INSERT INTO relations (world_id, a, b, label) VALUES (?, ?, ?, ?)").bind(
+        worldId,
+        r.a,
+        r.b,
+        r.label,
+      ),
+    );
+  }
+  for (const id of followIds) {
+    stmts.push(
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO follows (world_id, persona_id, following, followed_by) VALUES (?, ?, ?, ?)",
+      ).bind(worldId, id, following[id] === true ? 1 : 0, followedBy[id] === true ? 1 : 0),
+    );
+  }
+  await env.DB.batch(stmts);
+
+  // Warm-up: the neighbors are there before you are, and they notice you.
+  // Staggered so the first minutes look like people waking up, not a batch.
+  const warm = shuffled(parsed);
+  let at = t + randInt(15_000, 30_000);
+  const postCount = Math.min(6, Math.max(2, warm.length));
+  for (let i = 0; i < postCount; i++) {
+    await schedule(env, worldId, at, "write_post", { personaId: warm[i % warm.length].id });
+    at += randInt(15_000, 40_000);
+  }
+  const storyCount = Math.min(2, warm.length);
+  for (let i = 0; i < storyCount; i++) {
+    await schedule(env, worldId, at, "write_story", { personaId: warm[(i + 3) % warm.length].id });
+    at += randInt(20_000, 50_000);
+  }
+  const welcomer = warm.find((p) => followedBy[p.id] === true) ?? warm[0];
+  if (welcomer) {
+    await schedule(env, worldId, t + randInt(40_000, 70_000), "dm_open", { personaId: welcomer.id });
+  }
+  await schedule(env, worldId, t + randInt(5, 9) * 60_000, "tick", {});
+
+  return json({ worldId, key });
+}
+
+// ---- sync ----------------------------------------------------------------
+
+export async function handleSync(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const world = await authenticate(env, body);
+  if (!world) return json({ error: "unauthorized" }, 401);
+
+  const t = now();
+  const prevContact = world.last_contact_at;
+  await env.DB.prepare("UPDATE worlds SET last_contact_at = ? WHERE id = ?").bind(t, world.id).run();
+  await resetDayIfNeeded(env, world);
+
+  // Coming back after the world went to sleep: wake it.
+  if (prevContact > 0 && t - prevContact > 30 * 86_400_000) {
+    await schedule(env, world.id, t + 60_000, "tick", {});
+  }
+
+  const cursorRaw = Number(body["cursor"]);
+  const cursor = Number.isFinite(cursorRaw) && cursorRaw > 0 ? Math.floor(cursorRaw) : 0;
+
+  const rows = await env.DB.prepare(
+    "SELECT seq, kind, payload, created_at FROM outbox WHERE world_id = ? AND seq > ? ORDER BY seq LIMIT 300",
+  )
+    .bind(world.id, cursor)
+    .all<{ seq: number; kind: string; payload: string; created_at: number }>();
+
+  const items: unknown[] = [];
+  let last = cursor;
+  for (const row of rows.results) {
+    last = row.seq;
+    // Stories from before yesterday aren't stories any more.
+    if (row.kind === "story" && t - row.created_at > 86_400_000) continue;
+    try {
+      items.push({ seq: row.seq, kind: row.kind, at: row.created_at, data: JSON.parse(row.payload) });
+    } catch {
+      // A broken row is silence — never a crash.
+    }
+  }
+  return json({ cursor: last, items });
+}
+
+// ---- act -----------------------------------------------------------------
+
+export async function handleAct(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const world = await authenticate(env, body);
+  if (!world) return json({ error: "unauthorized" }, 401);
+
+  const action = str(body["action"]);
+  const p = (body["payload"] ?? {}) as Record<string, unknown>;
+  const commandId = str(body["commandId"]);
+  if (commandId) {
+    const ins = await env.DB.prepare(
+      "INSERT OR IGNORE INTO commands (world_id, command_id, created_at) VALUES (?, ?, ?)",
+    )
+      .bind(world.id, commandId, now())
+      .run();
+    if ((ins.meta.changes ?? 0) === 0) return json({ ok: true, duplicate: true });
+  }
+
+  await resetDayIfNeeded(env, world);
+  const t = now();
+
+  switch (action) {
+    case "post": {
+      const text = str(p["text"]).trim();
+      if (!text) return json({ error: "empty" }, 400);
+      const postId = await insertPost(env, world, "you", text.slice(0, 500));
+
+      // The neighbors queue up: three who follow you, one who doesn't.
+      const personas = await getPersonas(env, world.id);
+      const follows = await getFollows(env, world.id);
+      const followers = shuffled(personas.filter((x) => follows.get(x.id)?.followed_by === 1));
+      const others = shuffled(personas.filter((x) => follows.get(x.id)?.followed_by !== 1));
+      const chosen = [...followers.slice(0, 3), ...others.slice(0, 1)];
+      let delay = 8_000;
+      for (const asker of chosen) {
+        delay += randInt(10_000, 30_000);
+        await schedule(env, world.id, t + delay, "ask", { postId, personaId: asker.id });
+      }
+      return json({ ok: true, id: postId });
+    }
+
+    case "reply": {
+      const postId = str(p["postId"]);
+      const text = str(p["text"]).trim();
+      if (!postId || !text) return json({ error: "empty" }, 400);
+      const post = await env.DB.prepare("SELECT * FROM posts WHERE world_id = ? AND id = ?")
+        .bind(world.id, postId)
+        .first<PostRow>();
+      if (!post) return json({ error: "no such post" }, 404);
+      const replyId = await insertReply(env, world, postId, "you", text.slice(0, 500));
+
+      if (post.author_id === "you") {
+        // You replied under your own post — the commenter comes back.
+        const target = await env.DB.prepare(
+          "SELECT * FROM replies WHERE world_id = ? AND post_id = ? AND author_id != 'you' ORDER BY created_at DESC LIMIT 1",
+        )
+          .bind(world.id, postId)
+          .first<ReplyRow>();
+        if (target && Math.random() <= 0.8) {
+          await schedule(env, world.id, t + randInt(25_000, 90_000), "reply_back", {
+            personaId: target.author_id,
+            postId,
+            mode: "commenter",
+          });
+        }
+      } else if (Math.random() <= 0.65) {
+        // You replied under their post — the author thinks of something.
+        await schedule(env, world.id, t + randInt(25_000, 90_000), "reply_back", {
+          personaId: post.author_id,
+          postId,
+          mode: "author",
+        });
+      }
+      return json({ ok: true, id: replyId });
+    }
+
+    case "dm": {
+      const personaId = str(p["personaId"]);
+      const text = str(p["text"]).trim();
+      if (!personaId || !text) return json({ error: "empty" }, 400);
+      const persona = await getPersona(env, world.id, personaId);
+      if (!persona) return json({ error: "no such persona" }, 404);
+      const dmId = await insertDm(env, world, personaId, true, text.slice(0, 500));
+      await schedule(env, world.id, t + randInt(20_000, 60_000), "dm_reply", { personaId });
+      return json({ ok: true, id: dmId });
+    }
+
+    case "follow": {
+      const personaId = str(p["personaId"]);
+      const on = p["on"] === true;
+      const persona = await getPersona(env, world.id, personaId);
+      if (!persona) return json({ error: "no such persona" }, 404);
+      await setFollow(env, world, personaId, { following: on ? 1 : 0 });
+      if (on && Math.random() <= 0.6) {
+        // Following someone is a small door — sometimes they walk through.
+        await schedule(env, world.id, t + randInt(2 * 60_000, 20 * 60_000), "follow_back", { personaId });
+      }
+      return json({ ok: true });
+    }
+
+    case "like": {
+      const postId = str(p["postId"]);
+      const post = await env.DB.prepare("SELECT * FROM posts WHERE world_id = ? AND id = ?")
+        .bind(world.id, postId)
+        .first<PostRow>();
+      if (!post) return json({ error: "no such post" }, 404);
+      const liked = post.liked_by_me === 1;
+      await env.DB.prepare("UPDATE posts SET likes = ?, liked_by_me = ? WHERE world_id = ? AND id = ?")
+        .bind(Math.max(0, post.likes + (liked ? -1 : 1)), liked ? 0 : 1, world.id, postId)
+        .run();
+      await pushPostUpdate(env, world.id, postId);
+      return json({ ok: true, liked: !liked });
+    }
+
+    case "approve": {
+      const askId = str(p["askId"]);
+      const ask = await env.DB.prepare("SELECT * FROM comment_asks WHERE world_id = ? AND id = ?")
+        .bind(world.id, askId)
+        .first<AskRow>();
+      if (!ask || ask.state !== "pending") return json({ ok: true });
+      await env.DB.prepare("UPDATE comment_asks SET state = 'approved' WHERE world_id = ? AND id = ?")
+        .bind(world.id, ask.id)
+        .run();
+      await push(env, world.id, "ask", {
+        id: ask.id,
+        postId: ask.post_id,
+        personaId: ask.persona_id,
+        at: ask.at,
+        state: "approved",
+      });
+      await schedule(env, world.id, t + randInt(5_000, 20_000), "comment_write", { askId: ask.id });
+      return json({ ok: true });
+    }
+
+    case "skip": {
+      const askId = str(p["askId"]);
+      const ask = await env.DB.prepare("SELECT * FROM comment_asks WHERE world_id = ? AND id = ?")
+        .bind(world.id, askId)
+        .first<AskRow>();
+      if (!ask || (ask.state !== "pending" && ask.state !== "approved")) return json({ ok: true });
+      await env.DB.prepare("UPDATE comment_asks SET state = 'skipped' WHERE world_id = ? AND id = ?")
+        .bind(world.id, ask.id)
+        .run();
+      await push(env, world.id, "ask", {
+        id: ask.id,
+        postId: ask.post_id,
+        personaId: ask.persona_id,
+        at: ask.at,
+        state: "skipped",
+      });
+      return json({ ok: true });
+    }
+
+    case "set_model": {
+      const personaId = str(p["personaId"]);
+      const model = str(p["model"]).trim() || null;
+      if (!personaId) return json({ error: "personaId required" }, 400);
+      await env.DB.prepare("UPDATE personas SET model = ? WHERE world_id = ? AND id = ?")
+        .bind(model, world.id, personaId)
+        .run();
+      return json({ ok: true });
+    }
+
+    case "budget": {
+      const value = Math.round(Number(p["value"]));
+      if (!Number.isFinite(value)) return json({ error: "value required" }, 400);
+      const budget = clamp(value, 0, 1000);
+      await env.DB.prepare("UPDATE worlds SET daily_budget = ? WHERE id = ?").bind(budget, world.id).run();
+      return json({ ok: true, budget });
+    }
+
+    case "note": {
+      const text = str(p["text"]).trim();
+      if (!text) return json({ error: "empty" }, 400);
+      await env.DB.prepare(
+        "INSERT INTO context (world_id, id, source, text, at, active) VALUES (?, ?, 'you', ?, ?, 1)",
+      )
+        .bind(world.id, newId("ctx"), text.slice(0, 1000), t)
+        .run();
+      return json({ ok: true });
+    }
+
+    case "create_persona": {
+      const persona = parsePersona(p, newId("custom"), true);
+      if (!persona) return json({ error: "name and handle required" }, 400);
+      const ins = await env.DB.prepare(
+        "INSERT OR IGNORE INTO personas (world_id, id, name, handle, bio, occupation, location, voice, gradient, joined_year, follower_boost, model, custom) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)",
+      )
+        .bind(
+          world.id,
+          persona.id,
+          persona.name,
+          persona.handle,
+          persona.bio,
+          persona.occupation,
+          persona.location,
+          persona.voice,
+          persona.gradient,
+          persona.joinedYear,
+          persona.followerBoost,
+          persona.custom,
+        )
+        .run();
+      if ((ins.meta.changes ?? 0) === 0) return json({ ok: true, id: persona.id, duplicate: true });
+      await setFollow(env, world, persona.id, { following: 1, followed_by: 1 });
+      await push(env, world.id, "persona", {
+        id: persona.id,
+        name: persona.name,
+        handle: persona.handle,
+        bio: persona.bio,
+        occupation: persona.occupation,
+        location: persona.location,
+        voice: persona.voice,
+        gradient: JSON.parse(persona.gradient),
+        joinedYear: persona.joinedYear,
+        followerBoost: persona.followerBoost,
+      });
+      await schedule(env, world.id, t + randInt(30_000, 120_000), "write_post", { personaId: persona.id });
+      return json({ ok: true, id: persona.id });
+    }
+
+    default:
+      return json({ error: "unknown action" }, 400);
+  }
+}
+
+// ---- export / delete -----------------------------------------------------
+
+const TABLES = [
+  "personas",
+  "relations",
+  "posts",
+  "replies",
+  "stories",
+  "dms",
+  "comment_asks",
+  "follows",
+  "activity",
+  "context",
+] as const;
+
+export async function handleExport(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const world = await authenticate(env, body);
+  if (!world) return json({ error: "unauthorized" }, 401);
+  const out: Record<string, unknown> = {};
+  for (const tb of TABLES) {
+    const res = await env.DB.prepare(`SELECT * FROM ${tb} WHERE world_id = ?`).bind(world.id).all();
+    out[tb] = res.results;
+  }
+  const { api_key: _apiKey, ...worldSafe } = world;
+  return json({ world: worldSafe, ...out });
+}
+
+export async function handleDelete(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const world = await authenticate(env, body);
+  if (!world) return json({ error: "unauthorized" }, 401);
+  if (str(body["confirm"]) !== "delete") return json({ error: "confirm required" }, 400);
+  const stmts = [
+    ...TABLES.map((tb) => env.DB.prepare(`DELETE FROM ${tb} WHERE world_id = ?`).bind(world.id)),
+    env.DB.prepare("DELETE FROM outbox WHERE world_id = ?").bind(world.id),
+    env.DB.prepare("DELETE FROM jobs WHERE world_id = ?").bind(world.id),
+    env.DB.prepare("DELETE FROM commands WHERE world_id = ?").bind(world.id),
+    env.DB.prepare("DELETE FROM world_keys WHERE world_id = ?").bind(world.id),
+    env.DB.prepare("DELETE FROM worlds WHERE id = ?").bind(world.id),
+  ];
+  await env.DB.batch(stmts);
+  return json({ ok: true });
+}
