@@ -26,8 +26,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # The ubuntu runner image already ships a full Android SDK
+      # (platforms, build-tools, cmdline-tools) with licenses accepted.
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
