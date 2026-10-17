@@ -42,7 +42,7 @@ Local build: `./gradlew assembleDebug` (JDK 17 + Android SDK 35).
 5. ~~OpenAI-compatible engine — Kilo free gateway by default, model list with on-device cache, live-written posts and DMs~~
 6. ~~Create AI people — named, with a job, a bio and a voice, saved to Room~~
 7. ~~Stories, explore~~
-8. Polish: motion, haptics, edge-swipe
+8. ~~Polish: motion, haptics, edge-swipe~~
 
 ## License
 

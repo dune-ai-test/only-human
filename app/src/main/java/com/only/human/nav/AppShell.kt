@@ -9,6 +9,10 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +28,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.only.human.design.Motion
@@ -110,7 +116,33 @@ fun AppShell() {
     )
 
     CompositionLocalProvider(LocalTabBarInset provides tabBarInset) {
-        Box(Modifier.fillMaxSize().background(colors.grouped)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(colors.grouped)
+                // iOS back gesture: a drag in from the left edge pops the top
+                // screen. Taps are never touched — only edge drags are claimed.
+                .pointerInput(Unit) {
+                    val edgePx = 26.dp.toPx()
+                    val popPx = 64.dp.toPx()
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (nav.stack.isEmpty() || down.position.x > edgePx) {
+                            return@awaitEachGesture
+                        }
+                        var drag = 0f
+                        val claim = awaitHorizontalTouchSlopOrCancellation(down.id) { change, over ->
+                            change.consume()
+                            drag = over
+                        } ?: return@awaitEachGesture
+                        horizontalDrag(claim.id) { change ->
+                            change.consume()
+                            drag += change.positionChange().x
+                        }
+                        if (drag > popPx) nav.pop()
+                    }
+                },
+        ) {
             AnimatedContent(
                 targetState = key,
                 transitionSpec = {

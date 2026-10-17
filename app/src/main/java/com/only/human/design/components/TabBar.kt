@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.only.human.design.colors
 import com.only.human.design.iosClickable
+import com.only.human.design.rememberTick
 import com.only.human.design.type
 
 /** One tab. [badge] draws a small red count above the icon when above zero. */
@@ -47,6 +48,7 @@ fun IOSTabBar(
 ) {
     val c = colors
     val t = type
+    val tick = rememberTick()
     Column(
         modifier
             .fillMaxWidth()
@@ -61,7 +63,7 @@ fun IOSTabBar(
                     Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .iosClickable(scaleTo = 0.9f, onClick = { onSelect(index) }),
+                        .iosClickable(scaleTo = 0.9f, haptic = tick, onClick = { onSelect(index) }),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

@@ -99,6 +99,7 @@ fun FeedScreen(
 private fun StoriesRow(stories: List<Story>, onOpenStory: (String) -> Unit) {
     val c = colors
     val t = type
+    val tick = rememberTick()
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -107,7 +108,7 @@ private fun StoriesRow(stories: List<Story>, onOpenStory: (String) -> Unit) {
             val persona = Cast.byId(story.personaId)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.iosClickable(scaleTo = 0.94f, onClick = { onOpenStory(persona.id) }),
+                modifier = Modifier.iosClickable(scaleTo = 0.94f, haptic = tick, onClick = { onOpenStory(persona.id) }),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Box(
