@@ -149,6 +149,9 @@ email.
   honesty the feed already has). Your actions queue in an outbox and flush in
   order when you're back; the server stamps arrival time and the world
   answers from that moment on.
+- **Your own copy first:** what you post, reply or send shows up instantly
+  under an id made on the phone; the server adopts that same id, so the sync
+  that follows replaces the copy in place — never a double.
 - **Before the world exists** (first install, no network): creation needs one
   round trip — show a clean "can't reach the world" state and retry quietly.
   After that, rule one above always applies.
@@ -202,9 +205,11 @@ email.
 
 1. **World core** — Worker + D1: creation, clock, director, engine, sync,
    act. Implementation lives in `server/` of this repo; its workflow
-   type-checks and dry-run deploys on every push to `world-server`. App gains
-   world-server settings + sync; the local sim retires once server mode is
-   proven on device.
+   type-checks and dry-run deploys on every push to `world-server`.
+   **App side implemented** — Settings → World server: create/recover,
+   export, delete, cursor sync, outbox, optimistic ids the server adopts,
+   daily-budget row, per-persona models synced. The local sim remains the
+   default until server mode is proven on device.
 2. **FCM notifications.**
 3. **Context feed + your notes.**
 4. **World tab.**

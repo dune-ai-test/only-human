@@ -52,6 +52,7 @@ import com.only.human.screens.ProfileScreen
 import com.only.human.screens.SettingsScreen
 import com.only.human.screens.StoryViewer
 import com.only.human.screens.TagScreen
+import com.only.human.screens.WorldServerScreen
 import com.only.human.screens.YouScreen
 import com.only.human.world.World
 
@@ -65,6 +66,7 @@ sealed interface Route {
     data object Messages : Route
     data object Settings : Route
     data object Engine : Route
+    data object WorldServer : Route
     data object CreatePersona : Route
     data class Tag(val tag: String) : Route
     data class Stories(val startId: String) : Route
@@ -215,8 +217,10 @@ fun AppShell() {
                     Route.Settings -> SettingsScreen(
                         onBack = { nav.pop() },
                         onOpenEngine = { nav.push(Route.Engine) },
+                        onOpenWorldServer = { nav.push(Route.WorldServer) },
                     )
                     Route.Engine -> EngineScreen(onBack = { nav.pop() })
+                    Route.WorldServer -> WorldServerScreen(onBack = { nav.pop() })
                     Route.CreatePersona -> CreatePersonaScreen(
                         onBack = { nav.pop() },
                         onCreated = { id ->

@@ -155,6 +155,31 @@ interface OhDao {
 
     @Query("UPDATE stories SET seen = 1 WHERE id = :id")
     suspend fun markStorySeen(id: String)
+
+    // ---- adopting a server world -----------------------------------------
+    // When this phone becomes a window, its local world steps aside for the
+    // server's. These wipe the cache so cursor-zero can rebuild it cleanly.
+
+    @Query("DELETE FROM posts")
+    suspend fun wipePosts()
+
+    @Query("DELETE FROM replies")
+    suspend fun wipeReplies()
+
+    @Query("DELETE FROM activities")
+    suspend fun wipeActivities()
+
+    @Query("DELETE FROM follows")
+    suspend fun wipeFollows()
+
+    @Query("DELETE FROM dms")
+    suspend fun wipeDms()
+
+    @Query("DELETE FROM personas")
+    suspend fun wipePersonas()
+
+    @Query("DELETE FROM stories")
+    suspend fun wipeStories()
 }
 
 @Database(

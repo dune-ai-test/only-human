@@ -15,6 +15,7 @@ import {
   insertPost,
   insertReply,
   push,
+  pushActivity,
   pushPostUpdate,
   resetDayIfNeeded,
   schedule,
@@ -25,6 +26,15 @@ import { clamp, dayKey, hashKey, newId, newRecoveryKey, now, randInt, sameHash, 
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : "";
+}
+
+/**
+ * An id the phone made up for its own optimistic copy. Accepted only if it's
+ * plausible — anything odd gets a server-minted id instead.
+ */
+function clientId(v: unknown): string | null {
+  const clean = typeof v === "string" ? v.trim() : "";
+  return /^[A-Za-z0-9_-]{6,64}$/.test(clean) ? clean : null;
 }
 
 function shuffled<T>(arr: T[]): T[] {
@@ -172,6 +182,31 @@ export async function handleCreate(env: Env, body: Record<string, unknown>): Pro
   }
   await env.DB.batch(stmts);
 
+  // A phone that adopts this world reads from cursor zero, so the starting
+  // state ships as items too: anyone recovering on a fresh install sees the
+  // same cast, customs and follows the creator saw.
+  for (const p of parsed) {
+    await push(env, worldId, "persona", {
+      id: p.id,
+      name: p.name,
+      handle: p.handle,
+      bio: p.bio,
+      occupation: p.occupation,
+      location: p.location,
+      voice: p.voice,
+      gradient: JSON.parse(p.gradient),
+      joinedYear: p.joinedYear,
+      followerBoost: p.followerBoost,
+    });
+  }
+  for (const id of followIds) {
+    await push(env, worldId, "follow", {
+      personaId: id,
+      following: following[id] === true,
+      followedBy: followedBy[id] === true,
+    });
+  }
+
   // Warm-up: the neighbors are there before you are, and they notice you.
   // Staggered so the first minutes look like people waking up, not a batch.
   const warm = shuffled(parsed);
@@ -232,7 +267,13 @@ export async function handleSync(env: Env, body: Record<string, unknown>): Promi
       // A broken row is silence — never a crash.
     }
   }
-  return json({ cursor: last, items });
+  return json({
+    cursor: last,
+    items,
+    // Who you are over there — recovery on a new phone adopts this.
+    me: { name: world.me_name, handle: world.me_handle, avatarIndex: world.me_avatar },
+    budget: world.daily_budget,
+  });
 }
 
 // ---- act -----------------------------------------------------------------
@@ -260,7 +301,7 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
     case "post": {
       const text = str(p["text"]).trim();
       if (!text) return json({ error: "empty" }, 400);
-      const postId = await insertPost(env, world, "you", text.slice(0, 500));
+      const postId = await insertPost(env, world, "you", text.slice(0, 500), clientId(p["id"]) ?? undefined);
 
       // The neighbors queue up: three who follow you, one who doesn't.
       const personas = await getPersonas(env, world.id);
@@ -284,7 +325,7 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
         .bind(world.id, postId)
         .first<PostRow>();
       if (!post) return json({ error: "no such post" }, 404);
-      const replyId = await insertReply(env, world, postId, "you", text.slice(0, 500));
+      const replyId = await insertReply(env, world, postId, "you", text.slice(0, 500), clientId(p["id"]) ?? undefined);
 
       if (post.author_id === "you") {
         // You replied under your own post — the commenter comes back.
@@ -317,7 +358,7 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
       if (!personaId || !text) return json({ error: "empty" }, 400);
       const persona = await getPersona(env, world.id, personaId);
       if (!persona) return json({ error: "no such persona" }, 404);
-      const dmId = await insertDm(env, world, personaId, true, text.slice(0, 500));
+      const dmId = await insertDm(env, world, personaId, true, text.slice(0, 500), clientId(p["id"]) ?? undefined);
       await schedule(env, world.id, t + randInt(20_000, 60_000), "dm_reply", { personaId });
       return json({ ok: true, id: dmId });
     }
@@ -395,6 +436,8 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
       await env.DB.prepare("UPDATE personas SET model = ? WHERE world_id = ? AND id = ?")
         .bind(model, world.id, personaId)
         .run();
+      // Who writes in which voice is part of the world — let other phones know.
+      await push(env, world.id, "model", { personaId, model });
       return json({ ok: true });
     }
 
@@ -439,7 +482,9 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
         )
         .run();
       if ((ins.meta.changes ?? 0) === 0) return json({ ok: true, id: persona.id, duplicate: true });
-      await setFollow(env, world, persona.id, { following: 1, followed_by: 1 });
+      // The app's own semantics: a fresh persona follows you, not the reverse.
+      await setFollow(env, world, persona.id, { following: 0, followed_by: 1 });
+      await pushActivity(env, world.id, persona.id, persona.name, " just moved in and followed you", "Follow");
       await push(env, world.id, "persona", {
         id: persona.id,
         name: persona.name,

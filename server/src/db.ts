@@ -153,9 +153,10 @@ export async function insertPost(
   world: WorldRow,
   authorId: string,
   text: string,
+  idParam?: string,
 ): Promise<string> {
   const t = now();
-  const id = newId("post");
+  const id = idParam ?? newId("post");
   await env.DB.prepare(
     "INSERT INTO posts (world_id, id, author_id, text, created_at, likes, replies, liked_by_me) VALUES (?, ?, ?, ?, ?, 0, 0, 0)",
   )
@@ -179,9 +180,10 @@ export async function insertReply(
   postId: string,
   authorId: string,
   text: string,
+  idParam?: string,
 ): Promise<string> {
   const t = now();
-  const id = newId("reply");
+  const id = idParam ?? newId("reply");
   await env.DB.prepare(
     "INSERT INTO replies (world_id, id, post_id, author_id, text, created_at) VALUES (?, ?, ?, ?, ?, ?)",
   )
@@ -217,9 +219,10 @@ export async function insertDm(
   personaId: string,
   fromMe: boolean,
   text: string,
+  idParam?: string,
 ): Promise<string> {
   const t = now();
-  const id = newId("dm");
+  const id = idParam ?? newId("dm");
   await env.DB.prepare(
     "INSERT INTO dms (world_id, id, persona_id, from_me, text, at) VALUES (?, ?, ?, ?, ?, ?)",
   )

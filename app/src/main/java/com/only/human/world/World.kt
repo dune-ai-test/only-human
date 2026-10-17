@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 import kotlin.random.Random
 
 /**
@@ -73,6 +74,14 @@ object World {
 
     /** Pick the model one person writes through — null or blank is the default. */
     fun setPersonaModel(personaId: String, model: String?) {
+        applyPersonaModel(personaId, model)
+        if (Server.active) {
+            Server.act("set_model", JSONObject().put("personaId", personaId).put("model", model?.trim().orEmpty()))
+        }
+    }
+
+    /** The model map, saved — the world's copy and this phone's stay in step. */
+    private fun applyPersonaModel(personaId: String, model: String?) {
         val clean = model?.trim().orEmpty()
         if (clean.isEmpty()) personaModels.remove(personaId) else personaModels[personaId] = clean
         val json = JSONObject()
@@ -169,6 +178,7 @@ object World {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs = p
         Engine.load(p)
+        Server.load(p)
         p.getString(KEY_PERSONA_MODELS, null)?.let { raw ->
             try {
                 val json = JSONObject(raw)
@@ -228,7 +238,9 @@ object World {
                 Cast.setCustom(storedPersonas)
                 Cast.all.forEach { dmSeen[it.id] = p.getLong("dmSeen_${it.id}", 0L) }
             }
-            if (!firstRun && lastVisit in 1 until now) {
+            // A server world keeps its own time — the cache catches up by
+            // sync, never by simulating what the neighbors did while away.
+            if (!Server.active && !firstRun && lastVisit in 1 until now) {
                 runCatchUp(dao, lastVisit, now)
             }
 
@@ -261,7 +273,12 @@ object World {
                 }
             }
             prefs?.edit()?.putLong(KEY_LAST_VISIT, System.currentTimeMillis())?.apply()
-            refreshStories()
+            if (Server.active) {
+                // The cache is on screen — now go find out what really happened.
+                Server.onBoot()
+            } else {
+                refreshStories()
+            }
         }
     }
 
@@ -308,9 +325,12 @@ object World {
         }
         // Sofia can't help herself — the first DM arrives shortly after
         // you move in. And the rest of the neighborhood is waking up.
-        welcomeDm("sofia")
-        warmUpWorld()
-        refreshStories()
+        // (A server world does its own warm-up — this phone only watches.)
+        if (!Server.active) {
+            welcomeDm("sofia")
+            warmUpWorld()
+            refreshStories()
+        }
     }
 
     /**
@@ -351,6 +371,19 @@ object World {
         following[id] = false
         followedBy[id] = true
 
+        scope.launch {
+            val dao = database?.dao() ?: return@launch
+            dao.upsertPersona(persona.toEntity())
+            dao.upsertFollow(FollowEntity(id, false, true))
+        }
+
+        if (Server.active) {
+            // The world writes them in and says hello — the join shows up
+            // through sync, with an id everyone shares.
+            Server.act("create_persona", Server.personaPayload(persona))
+            return id
+        }
+
         val item = ActivityItem(
             id = "joined-$id-${System.currentTimeMillis()}",
             personaId = id,
@@ -361,12 +394,6 @@ object World {
         )
         activities.add(0, item)
         persistActivity(item)
-
-        scope.launch {
-            val dao = database?.dao() ?: return@launch
-            dao.upsertPersona(persona.toEntity())
-            dao.upsertFollow(FollowEntity(id, false, true))
-        }
 
         // They say hello to the feed in their own voice — written live.
         scope.launch {
@@ -437,8 +464,10 @@ object World {
     }
 
     fun addPost(text: String, authorId: String = "you") {
+        // On a server world the id is made here, so your post shows up the
+        // instant you hit send — the world adopts this same id on arrival.
         val post = Post(
-            id = "local-${System.currentTimeMillis()}-${postSeq++}",
+            id = if (Server.active) "s-post-${UUID.randomUUID()}" else "local-${System.currentTimeMillis()}-${postSeq++}",
             authorId = authorId,
             text = text,
             createdAt = System.currentTimeMillis(),
@@ -447,7 +476,13 @@ object World {
         )
         posts.add(0, post)
         persistPost(post)
-        if (authorId == "you") scheduleComments(post)
+        if (authorId == "you") {
+            if (Server.active) {
+                Server.act("post", JSONObject().put("id", post.id).put("text", post.text))
+            } else {
+                scheduleComments(post)
+            }
+        }
     }
 
     // ---- replies ---------------------------------------------------------
@@ -457,7 +492,7 @@ object World {
 
     fun addReply(postId: String, text: String) {
         val reply = Reply(
-            id = "local-r-${System.currentTimeMillis()}-${postSeq++}",
+            id = if (Server.active) "s-reply-${UUID.randomUUID()}" else "local-r-${System.currentTimeMillis()}-${postSeq++}",
             postId = postId,
             authorId = "you",
             text = text,
@@ -466,8 +501,12 @@ object World {
         replies += reply
         bumpReplyCount(postId)
         persistReply(reply)
-        schedulePersonaReply(postId)
-        scheduleCommenterReply(postId)
+        if (Server.active) {
+            Server.act("reply", JSONObject().put("id", reply.id).put("postId", postId).put("text", text))
+        } else {
+            schedulePersonaReply(postId)
+            scheduleCommenterReply(postId)
+        }
     }
 
     private fun bumpReplyCount(postId: String) {
@@ -576,6 +615,19 @@ object World {
     fun postComment(intentId: String) {
         val intent = commentIntents.firstOrNull { it.id == intentId } ?: return
         if (intent.writing) return
+        if (Server.active) {
+            // The world writes it; the ask's state comes back through sync —
+            // approved (writing), pending again (couldn't write it), posted.
+            setIntentState(intentId, writing = true, failed = false)
+            Server.act(
+                "approve",
+                JSONObject().put("askId", intentId),
+                queueOnFailure = false,
+                onRejected = { setIntentState(intentId, writing = false, failed = true) },
+            )
+            Server.kickIn(30_000)
+            return
+        }
         setIntentState(intentId, writing = true, failed = false)
         scope.launch {
             val post = posts.firstOrNull { it.id == intent.postId }
@@ -619,6 +671,7 @@ object World {
     fun skipComment(intentId: String) {
         commentIntents.removeAll { it.id == intentId }
         persistCommentIntents()
+        if (Server.active) Server.act("skip", JSONObject().put("askId", intentId))
     }
 
     private fun setIntentState(intentId: String, writing: Boolean, failed: Boolean) {
@@ -730,7 +783,7 @@ object World {
         if (clean.isEmpty()) return
         val now = System.currentTimeMillis()
         val dm = Dm(
-            id = "local-dm-$now-${postSeq++}",
+            id = if (Server.active) "s-dm-${UUID.randomUUID()}" else "local-dm-$now-${postSeq++}",
             personaId = personaId,
             fromMe = true,
             text = clean.take(600),
@@ -739,7 +792,20 @@ object World {
         dms += dm
         persistDm(dm)
         markDmSeen(personaId)
-        scheduleDmReply(personaId)
+        if (Server.active) {
+            // They're thinking over there, at their own pace. Three minutes
+            // of dots, then the dots give up — an answer may still land.
+            typing[personaId] = true
+            val mine = dm
+            scope.launch {
+                delay(180_000)
+                val answered = dms.any { it.personaId == personaId && !it.fromMe && it.at > mine.at }
+                if (!answered) withContext(Dispatchers.Main) { typing[personaId] = false }
+            }
+            Server.act("dm", JSONObject().put("id", dm.id).put("personaId", personaId).put("text", dm.text))
+        } else {
+            scheduleDmReply(personaId)
+        }
     }
 
     private fun scheduleDmReply(personaId: String) {
@@ -1098,14 +1164,19 @@ object World {
         )
         posts[index] = updated
         persistPost(updated)
+        if (Server.active) Server.act("like", JSONObject().put("postId", postId))
     }
 
     fun toggleFollow(personaId: String) {
         val value = following[personaId] != true
         following[personaId] = value
-        val db = database ?: return
-        scope.launch {
-            db.dao().upsertFollow(FollowEntity(personaId, value, followedBy[personaId] == true))
+        database?.let { db ->
+            scope.launch {
+                db.dao().upsertFollow(FollowEntity(personaId, value, followedBy[personaId] == true))
+            }
+        }
+        if (Server.active) {
+            Server.act("follow", JSONObject().put("personaId", personaId).put("on", value))
         }
     }
 
@@ -1117,6 +1188,261 @@ object World {
     private fun persistPost(post: Post) {
         val db = database ?: return
         scope.launch { db.dao().upsertPost(post.toEntity()) }
+    }
+
+    // ---- the server world --------------------------------------------------
+
+    /**
+     * Adopting a server world: this phone's local world steps aside so the
+     * world's own record can rebuild it cleanly from cursor zero.
+     */
+    suspend fun wipeForServer() {
+        withContext(Dispatchers.Main) {
+            posts.clear()
+            replies.clear()
+            dms.clear()
+            stories.clear()
+            activities.clear()
+            commentIntents.clear()
+            following.clear()
+            followedBy.clear()
+            Cast.setCustom(emptyList())
+        }
+        persistCommentIntents()
+        val dao = database?.dao() ?: return
+        dao.wipePosts()
+        dao.wipeReplies()
+        dao.wipeActivities()
+        dao.wipeFollows()
+        dao.wipeDms()
+        dao.wipePersonas()
+        dao.wipeStories()
+    }
+
+    /**
+     * Everything the world sends lands here — one place, in order. Items
+     * carry their own ids, so a copy that's already on screen (one you made
+     * optimistically) is simply replaced, never doubled.
+     */
+    suspend fun applyServerSync(serverMe: JSONObject?, items: JSONArray) {
+        if (!Server.active) return
+        val arrivedAt = System.currentTimeMillis()
+        withContext(Dispatchers.Main) {
+            // Who you are over there wins — recovery restores your name too.
+            if (serverMe != null) {
+                val name = serverMe.optString("name").trim()
+                val handle = serverMe.optString("handle").trim()
+                val avatar = serverMe.optInt("avatarIndex", me.avatarIndex)
+                if (name.isNotEmpty() && handle.isNotEmpty() &&
+                    (name != me.name || handle != me.handle || avatar != me.avatarIndex)
+                ) {
+                    me = Me(name, handle, avatar)
+                    prefs?.edit()
+                        ?.putString(KEY_ME_NAME, name)
+                        ?.putString(KEY_ME_HANDLE, handle)
+                        ?.putInt(KEY_ME_AVATAR, avatar)
+                        ?.apply()
+                }
+            }
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val data = item.optJSONObject("data") ?: continue
+                applyServerItem(item.optString("kind"), data, arrivedAt)
+            }
+            activities.sortByDescending { it.createdAt }
+        }
+    }
+
+    private fun applyServerItem(kind: String, data: JSONObject, arrivedAt: Long) {
+        when (kind) {
+            "post" -> {
+                val id = data.optString("id")
+                if (id.isEmpty()) return
+                val post = Post(
+                    id = id,
+                    authorId = data.optString("authorId"),
+                    text = data.optString("text"),
+                    createdAt = data.optLong("createdAt"),
+                    likes = data.optInt("likes"),
+                    replies = data.optInt("replies"),
+                    likedByYou = data.optBoolean("likedByMe"),
+                )
+                val index = posts.indexOfFirst { it.id == id }
+                if (index >= 0) posts[index] = post else insertPost(post)
+                persistPost(post)
+            }
+
+            "reply" -> {
+                val id = data.optString("id")
+                if (id.isEmpty()) return
+                val reply = Reply(
+                    id = id,
+                    postId = data.optString("postId"),
+                    authorId = data.optString("authorId"),
+                    text = data.optString("text"),
+                    createdAt = data.optLong("createdAt"),
+                )
+                if (replies.any { it.id == reply.id }) return
+                replies += reply
+                persistReply(reply)
+                if (reply.authorId != "you" && arrivedAt - reply.createdAt < 120_000) {
+                    tell(Cast.byId(reply.authorId).name, reply.text, "reply-${reply.id}")
+                }
+            }
+
+            "story" -> {
+                val id = data.optString("id")
+                if (id.isEmpty() || stories.any { it.id == id }) return
+                val story = Story(
+                    id = id,
+                    personaId = data.optString("personaId"),
+                    text = data.optString("text"),
+                    createdAt = data.optLong("createdAt"),
+                    seen = false,
+                )
+                stories.add(0, story)
+                scope.launch { database?.dao()?.upsertStory(story.toEntity()) }
+            }
+
+            "dm" -> {
+                val id = data.optString("id")
+                if (id.isEmpty() || dms.any { it.id == id }) return
+                val dm = Dm(
+                    id = id,
+                    personaId = data.optString("personaId"),
+                    fromMe = data.optBoolean("fromMe"),
+                    text = data.optString("text"),
+                    at = data.optLong("at"),
+                )
+                dms += dm
+                persistDm(dm)
+                if (!dm.fromMe) {
+                    typing[dm.personaId] = false
+                    if (openDm == dm.personaId) {
+                        markDmSeen(dm.personaId)
+                    } else {
+                        tell(Cast.byId(dm.personaId).name, dm.text, "dm-${dm.id}")
+                    }
+                }
+            }
+
+            "ask" -> {
+                val id = data.optString("id")
+                if (id.isEmpty()) return
+                val postId = data.optString("postId")
+                val personaId = data.optString("personaId")
+                val at = data.optLong("at")
+                when (data.optString("state")) {
+                    "pending" -> {
+                        val index = commentIntents.indexOfFirst { it.id == id }
+                        if (index < 0) {
+                            commentIntents += CommentIntent(id = id, postId = postId, personaId = personaId, at = at)
+                        } else {
+                            // Back to pending after a failed write: the row
+                            // offers "Try again", exactly like the local flow.
+                            val wasWriting = commentIntents[index].writing
+                            commentIntents[index] = commentIntents[index].copy(writing = false, failed = wasWriting)
+                        }
+                        persistCommentIntents()
+                    }
+                    "approved" -> {
+                        val index = commentIntents.indexOfFirst { it.id == id }
+                        if (index < 0) {
+                            commentIntents += CommentIntent(
+                                id = id,
+                                postId = postId,
+                                personaId = personaId,
+                                at = at,
+                                writing = true,
+                            )
+                        } else {
+                            commentIntents[index] = commentIntents[index].copy(writing = true, failed = false)
+                        }
+                        persistCommentIntents()
+                    }
+                    else -> {
+                        commentIntents.removeAll { it.id == id }
+                        persistCommentIntents()
+                    }
+                }
+            }
+
+            "signal" -> {
+                val id = data.optString("id")
+                if (id.isEmpty() || activities.any { it.id == id }) return
+                val signalKind = when (data.optString("kind")) {
+                    "Follow" -> ActivityKind.Follow
+                    "Like" -> ActivityKind.Like
+                    "Reply" -> ActivityKind.Reply
+                    "Mention" -> ActivityKind.Mention
+                    "Message" -> ActivityKind.Message
+                    else -> ActivityKind.System
+                }
+                val item = ActivityItem(
+                    id = id,
+                    personaId = data.optString("personaId"),
+                    boldPart = data.optString("boldPart"),
+                    rest = data.optString("rest"),
+                    createdAt = data.optLong("createdAt"),
+                    kind = signalKind,
+                )
+                activities.add(0, item)
+                persistActivity(item)
+            }
+
+            "follow" -> {
+                val personaId = data.optString("personaId")
+                if (personaId.isEmpty()) return
+                val isFollowing = data.optBoolean("following")
+                val followsYou = data.optBoolean("followedBy")
+                following[personaId] = isFollowing
+                followedBy[personaId] = followsYou
+                scope.launch {
+                    database?.dao()?.upsertFollow(FollowEntity(personaId, isFollowing, followsYou))
+                }
+            }
+
+            "model" -> {
+                val personaId = data.optString("personaId")
+                if (personaId.isEmpty()) return
+                val raw = data.opt("model")
+                applyPersonaModel(personaId, if (raw is String) raw.takeIf { it.isNotBlank() } else null)
+            }
+
+            "persona" -> {
+                val id = data.optString("id")
+                if (id.isEmpty() || Cast.residents.any { it.id == id }) return
+                val persona = Persona(
+                    id = id,
+                    name = data.optString("name"),
+                    handle = data.optString("handle"),
+                    bio = data.optString("bio"),
+                    occupation = data.optString("occupation"),
+                    location = data.optString("location"),
+                    voice = data.optString("voice"),
+                    gradient = gradientFromJson(data.optJSONArray("gradient")),
+                    joinedYear = data.optString("joinedYear"),
+                    followerBoost = data.optInt("followerBoost"),
+                )
+                Cast.addCustom(persona)
+                scope.launch { database?.dao()?.upsertPersona(persona.toEntity()) }
+            }
+        }
+    }
+
+    private fun gradientFromJson(raw: JSONArray?): List<Color> {
+        if (raw == null || raw.length() == 0) return Cast.avatarPalettes.first()
+        val colors = mutableListOf<Color>()
+        for (i in 0 until raw.length()) {
+            val hex = raw.optString(i).trim().removePrefix("#")
+            val value = hex.toLongOrNull(16) ?: continue
+            colors += Color((0xFF000000L or value).toInt())
+        }
+        return when {
+            colors.size >= 2 -> colors.take(2)
+            colors.size == 1 -> listOf(colors[0], colors[0])
+            else -> Cast.avatarPalettes.first()
+        }
     }
 }
 

@@ -250,7 +250,7 @@ fun EngineScreen(onBack: () -> Unit) {
 
 /** iOS-style right-aligned value field inside a settings row. */
 @Composable
-private fun CompactValueField(
+internal fun CompactValueField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,

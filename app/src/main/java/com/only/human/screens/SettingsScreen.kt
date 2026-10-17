@@ -25,10 +25,11 @@ import com.only.human.design.components.LargeTitleScaffold
 import com.only.human.design.components.RowChevron
 import com.only.human.design.components.rememberCollapseOffset
 import com.only.human.world.Engine
+import com.only.human.world.Server
 import com.only.human.world.World
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onOpenEngine: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onOpenEngine: () -> Unit, onOpenWorldServer: () -> Unit) {
     val listState = rememberLazyListState()
     val offset = rememberCollapseOffset(listState)
 
@@ -98,6 +99,22 @@ fun SettingsScreen(onBack: () -> Unit, onOpenEngine: () -> Unit) {
                     )
                 }
             }
+            item(key = "world-server") {
+                InsetGroup(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    header = "World server",
+                    footer = "The world can live on a Worker of your own — it keeps ticking while this " +
+                        "phone is off. Until then, everything lives here.",
+                ) {
+                    GroupedRow(
+                        "World server",
+                        subtitle = serverSubtitle(),
+                        trailing = { RowChevron() },
+                        showDivider = false,
+                        onClick = onOpenWorldServer,
+                    )
+                }
+            }
             item(key = "notifications") {
                 InsetGroup(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -138,5 +155,15 @@ fun SettingsScreen(onBack: () -> Unit, onOpenEngine: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** One honest line about where the world lives right now. */
+private fun serverSubtitle(): String {
+    if (!Server.active) return "Off — the world lives on this phone"
+    return when (Server.state) {
+        is Server.State.Live -> "Live · world ${Server.worldId.take(8)}…"
+        is Server.State.Offline -> "Offline — keeping the cache, retrying"
+        else -> "Setting up…"
     }
 }
