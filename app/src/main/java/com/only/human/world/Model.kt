@@ -56,8 +56,11 @@ data class ActivityItem(
     val personaId: String,
     val boldPart: String,
     val rest: String,
-    val timeLabel: String,
+    /** Epoch millis. */
+    val createdAt: Long,
     val kind: ActivityKind,
-)
+) {
+    val timeLabel: String get() = relativeTime(createdAt)
+}
 
 enum class ActivityKind { Follow, Like, Reply, Mention, System }

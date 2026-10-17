@@ -19,4 +19,10 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onStop() {
+        super.onStop()
+        // The next launch simulates the gap between this moment and then.
+        World.markAway()
+    }
 }

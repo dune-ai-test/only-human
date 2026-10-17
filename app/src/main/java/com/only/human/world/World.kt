@@ -1,9 +1,12 @@
 package com.only.human.world
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import com.only.human.data.ActivityEntity
 import com.only.human.data.FollowEntity
+import com.only.human.data.OhDao
 import com.only.human.data.OhDatabase
 import com.only.human.data.PostEntity
 import kotlinx.coroutines.CoroutineScope
@@ -11,13 +14,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.random.Random
 
 /**
  * The living state of the network.
  *
- * The UI reads from here; every write goes through here and lands in Room,
- * so your posts, likes and follows survive a restart. The catch-up
- * simulation — what the fifteen did while you were away — comes next.
+ * The UI reads from here; every write goes through here into Room. Coming
+ * back after a gap runs the catch-up simulation: the fifteen post, reply and
+ * follow while you're gone, and the feed and Activity tab show what you
+ * missed — all in their own voices, no LLM required.
  */
 object World {
 
@@ -27,46 +32,103 @@ object World {
     /** personaId -> you follow them. */
     val following = mutableStateMapOf<String, Boolean>()
 
+    /** personaId -> they follow you. */
+    val followedBy = mutableStateMapOf<String, Boolean>()
+
     private var database: OhDatabase? = null
+    private var prefs: SharedPreferences? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var postSeq = 0
 
+    private const val PREFS = "only_human"
+    private const val KEY_LAST_VISIT = "lastVisitAt"
+
     init {
-        activities.addAll(Seed.activities)
-        Cast.people.forEach { following[it.id] = true }
+        Cast.people.forEach {
+            following[it.id] = true
+            followedBy[it.id] = true
+        }
         // Two of them haven't followed you back — Theo is being Theo,
         // and Rosa will get there on her own time.
         following["theo"] = false
         following["rosa"] = false
+        followedBy["theo"] = false
+        followedBy["rosa"] = false
     }
 
     /**
      * Show the world immediately, then reconcile with disk: the first launch
-     * seeds Room, every launch after restores what actually happened.
-     * Called once from MainActivity before the UI draws.
+     * seeds Room, every launch after restores what actually happened — and
+     * simulates the time you were away.
      */
     fun start(context: Context) {
         if (database != null) return
         val db = OhDatabase.get(context)
         database = db
+        prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        val seeded = Seed.posts(System.currentTimeMillis())
-        posts.addAll(seeded)
+        val base = System.currentTimeMillis()
+        posts.addAll(Seed.posts(base))
+        activities.addAll(Seed.activities(base))
 
         scope.launch {
             val dao = db.dao()
-            if (dao.postCount() == 0) {
-                dao.upsertPosts(seeded.map { it.toEntity() })
-                following.forEach { (id, value) -> dao.upsertFollow(FollowEntity(id, value)) }
-            } else {
-                val stored = dao.posts().map { it.toModel() }
-                val followed = dao.follows()
-                withContext(Dispatchers.Main) {
-                    posts.clear()
-                    posts.addAll(stored)
-                    followed.forEach { following[it.personaId] = it.following }
+            val firstRun = dao.postCount() == 0
+            if (firstRun) {
+                dao.upsertPosts(posts.map { it.toEntity() })
+                dao.upsertActivities(activities.map { it.toEntity() })
+                following.forEach { (id, value) ->
+                    dao.upsertFollow(FollowEntity(id, value, followedBy[id] == true))
                 }
             }
+
+            val lastVisit = prefs?.getLong(KEY_LAST_VISIT, 0L) ?: 0L
+            val now = System.currentTimeMillis()
+            if (!firstRun && lastVisit in 1 until now) {
+                runCatchUp(dao, lastVisit, now)
+            }
+
+            val storedPosts = dao.posts().map { it.toModel() }
+            val storedActivities = dao.activities().map { it.toModel() }
+            val storedFollows = dao.follows()
+            withContext(Dispatchers.Main) {
+                posts.clear()
+                posts.addAll(storedPosts)
+                activities.clear()
+                activities.addAll(storedActivities)
+                storedFollows.forEach {
+                    following[it.personaId] = it.following
+                    followedBy[it.personaId] = it.followsYou
+                }
+            }
+            prefs?.edit()?.putLong(KEY_LAST_VISIT, System.currentTimeMillis())?.apply()
+        }
+    }
+
+    /**
+     * Called when the app goes to the background. The next launch simulates
+     * the gap between this moment and then.
+     */
+    fun markAway() {
+        prefs?.edit()?.putLong(KEY_LAST_VISIT, System.currentTimeMillis())?.apply()
+    }
+
+    private suspend fun runCatchUp(dao: OhDao, from: Long, to: Long) {
+        val followRows = dao.follows()
+        val result = Simulation.catchUp(
+            from = from,
+            to = to,
+            allPosts = dao.posts().map { it.toModel() },
+            followedYou = followRows.associate { it.personaId to it.followsYou },
+            rng = Random(from xor to),
+        )
+        if (result.isEmpty) return
+        if (result.posts.isNotEmpty()) dao.upsertPosts(result.posts.map { it.toEntity() })
+        if (result.edited.isNotEmpty()) dao.upsertPosts(result.edited.map { it.toEntity() })
+        if (result.activities.isNotEmpty()) dao.upsertActivities(result.activities.map { it.toEntity() })
+        result.followsYou.forEach { (id, value) ->
+            val mine = followRows.firstOrNull { it.personaId == id }?.following ?: (following[id] == true)
+            dao.upsertFollow(FollowEntity(id, mine, value))
         }
     }
 
@@ -99,7 +161,9 @@ object World {
         val value = following[personaId] != true
         following[personaId] = value
         val db = database ?: return
-        scope.launch { db.dao().upsertFollow(FollowEntity(personaId, value)) }
+        scope.launch {
+            db.dao().upsertFollow(FollowEntity(personaId, value, followedBy[personaId] == true))
+        }
     }
 
     fun postsBy(authorId: String): List<Post> = posts.filter { it.authorId == authorId }
@@ -131,6 +195,24 @@ private fun PostEntity.toModel() = Post(
     likes = likes,
     replies = replies,
     likedByYou = likedByYou,
+)
+
+private fun ActivityItem.toEntity() = ActivityEntity(
+    id = id,
+    personaId = personaId,
+    boldPart = boldPart,
+    rest = rest,
+    at = createdAt,
+    kind = kind.name,
+)
+
+private fun ActivityEntity.toModel() = ActivityItem(
+    id = id,
+    personaId = personaId,
+    boldPart = boldPart,
+    rest = rest,
+    createdAt = at,
+    kind = runCatching { ActivityKind.valueOf(kind) }.getOrDefault(ActivityKind.System),
 )
 
 /** The world as it looked the moment you arrived. */
@@ -220,13 +302,30 @@ private object Seed {
         replies = replies,
     )
 
-    val activities: List<ActivityItem> = listOf(
-        ActivityItem("a1", "sofia", "Sofia Marchetti", " started following you", "8m", ActivityKind.Follow),
-        ActivityItem("a2", "sofia", "Sofia Marchetti", " mentioned you in a post", "10m", ActivityKind.Mention),
-        ActivityItem("a3", "marcus", "Marcus Bell", " started following you", "45m", ActivityKind.Follow),
-        ActivityItem("a4", "elena", "Elena Ruiz", " started following you", "1h", ActivityKind.Follow),
-        ActivityItem("a5", "nina", "Nina Petrova", " started following you", "2h", ActivityKind.Follow),
-        ActivityItem("a6", "kai", "Kai Tanaka", " started following you. that basically never happens", "3h", ActivityKind.Follow),
-        ActivityItem("a7", "you", "Welcome to Only Human", " — fifteen people just got a new neighbor.", "today", ActivityKind.System),
+    fun activities(base: Long): List<ActivityItem> = listOf(
+        act("a1", "sofia", "Sofia Marchetti", " started following you", 8, ActivityKind.Follow, base),
+        act("a2", "sofia", "Sofia Marchetti", " mentioned you in a post", 10, ActivityKind.Mention, base),
+        act("a3", "marcus", "Marcus Bell", " started following you", 45, ActivityKind.Follow, base),
+        act("a4", "elena", "Elena Ruiz", " started following you", 60, ActivityKind.Follow, base),
+        act("a5", "nina", "Nina Petrova", " started following you", 120, ActivityKind.Follow, base),
+        act("a6", "kai", "Kai Tanaka", " started following you. that basically never happens", 180, ActivityKind.Follow, base),
+        act("a7", "you", "Welcome to Only Human", " — fifteen people just got a new neighbor.", 480, ActivityKind.System, base),
+    )
+
+    private fun act(
+        id: String,
+        persona: String,
+        bold: String,
+        rest: String,
+        minutesAgo: Int,
+        kind: ActivityKind,
+        base: Long,
+    ): ActivityItem = ActivityItem(
+        id = id,
+        personaId = persona,
+        boldPart = bold,
+        rest = rest,
+        createdAt = base - minutesAgo * 60_000L,
+        kind = kind,
     )
 }

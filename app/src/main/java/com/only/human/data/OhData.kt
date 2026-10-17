@@ -10,6 +10,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /** A post as it lives on disk. */
 @Entity(tableName = "posts")
@@ -23,11 +25,25 @@ data class PostEntity(
     val likedByYou: Boolean,
 )
 
-/** Your follow state for one persona. */
+/** Follow state for one persona, both directions. */
 @Entity(tableName = "follows")
 data class FollowEntity(
     @PrimaryKey val personaId: String,
+    /** You follow them. */
     val following: Boolean,
+    /** They follow you. */
+    val followsYou: Boolean,
+)
+
+/** One row of the Activity tab, as it lives on disk. */
+@Entity(tableName = "activities")
+data class ActivityEntity(
+    @PrimaryKey val id: String,
+    val personaId: String,
+    val boldPart: String,
+    val rest: String,
+    val at: Long,
+    val kind: String,
 )
 
 @Dao
@@ -45,6 +61,12 @@ interface OhDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPost(post: PostEntity)
 
+    @Query("SELECT * FROM activities ORDER BY at DESC")
+    suspend fun activities(): List<ActivityEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertActivities(items: List<ActivityEntity>)
+
     @Query("SELECT * FROM follows")
     suspend fun follows(): List<FollowEntity>
 
@@ -52,7 +74,11 @@ interface OhDao {
     suspend fun upsertFollow(follow: FollowEntity)
 }
 
-@Database(entities = [PostEntity::class, FollowEntity::class], version = 1, exportSchema = false)
+@Database(
+    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class],
+    version = 2,
+    exportSchema = false,
+)
 abstract class OhDatabase : RoomDatabase() {
 
     abstract fun dao(): OhDao
@@ -60,11 +86,29 @@ abstract class OhDatabase : RoomDatabase() {
     companion object {
         @Volatile private var instance: OhDatabase? = null
 
+        /** v2: activities got real timestamps on disk, follows gained a direction. */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE follows ADD COLUMN followsYou INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("UPDATE follows SET followsYou = 0 WHERE personaId IN ('theo', 'rosa')")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS activities (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "personaId TEXT NOT NULL, " +
+                        "boldPart TEXT NOT NULL, " +
+                        "rest TEXT NOT NULL, " +
+                        "at INTEGER NOT NULL, " +
+                        "kind TEXT NOT NULL)",
+                )
+            }
+        }
+
         fun get(context: Context): OhDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room
                     .databaseBuilder(context.applicationContext, OhDatabase::class.java, "only-human.db")
-                    // Nightlies may change the schema freely; pre-1.0 there is nothing precious on disk.
+                    .addMigrations(MIGRATION_1_2)
+                    // Nightlies may change the schema freely; pre-1.0 nothing on disk is precious.
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }
