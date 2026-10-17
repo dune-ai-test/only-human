@@ -198,19 +198,22 @@ fun AppShell() {
                 }
             }
 
-            IOSTabBar(
-                tabs = tabs,
-                selectedIndex = tab,
-                onSelect = { index ->
-                    if (index == 2) {
-                        composerOpen = true
-                    } else {
-                        nav.clear()
-                        tab = index
-                    }
-                },
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
+            // Stories play full-screen, the way they should — no tab bar.
+            if (key.route !is Route.Stories) {
+                IOSTabBar(
+                    tabs = tabs,
+                    selectedIndex = tab,
+                    onSelect = { index ->
+                        if (index == 2) {
+                            composerOpen = true
+                        } else {
+                            nav.clear()
+                            tab = index
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
         }
     }
 
