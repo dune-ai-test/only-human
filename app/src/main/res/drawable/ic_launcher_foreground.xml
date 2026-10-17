@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Constellation lines: the group -->
+    <path
+        android:pathData="M40,38 L54,54 M68,42 L54,54 M36,64 L54,54 M70,66 L54,54"
+        android:strokeColor="#2EFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+
+    <!-- Them -->
+    <path
+        android:pathData="M40,38 m-3.6,0 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0"
+        android:fillColor="#E8E8ED" />
+    <path
+        android:pathData="M68,42 m-3.6,0 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0"
+        android:fillColor="#E8E8ED" />
+    <path
+        android:pathData="M36,64 m-3.6,0 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0"
+        android:fillColor="#E8E8ED" />
+    <path
+        android:pathData="M70,66 m-3.6,0 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0"
+        android:fillColor="#E8E8ED" />
+
+    <!-- You: the blue one -->
+    <path
+        android:pathData="M54,54 m-5.4,0 a5.4,5.4 0 1,0 10.8,0 a5.4,5.4 0 1,0 -10.8,0"
+        android:fillColor="#0A84FF" />
+</vector>

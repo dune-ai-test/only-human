@@ -1,0 +1,57 @@
+name: Nightly
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    name: Build & publish nightly APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug -PversionSuffix=nightly.${{ github.run_number }} --stacktrace
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk OnlyHuman-nightly.apk
+
+      - name: Publish rolling nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly
+          prerelease: true
+          make_latest: false
+          files: OnlyHuman-nightly.apk
+          body: |
+            Automated nightly build — always the latest `main`.
+
+            - Build: `nightly.${{ github.run_number }}` (versionName shows it in the app)
+            - Commit: `${{ github.sha }}`
+            - Built: ${{ github.event.repository.updated_at }}
+
+            **Install:** download `OnlyHuman-nightly.apk` below on your phone and open it.
+            (Android will ask once for permission to install apps from this browser.)

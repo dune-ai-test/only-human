@@ -1,0 +1,4 @@
+# Keep shell scripts LF so GitHub Actions (Linux) can run the Gradle wrapper.
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
