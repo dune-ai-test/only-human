@@ -65,10 +65,11 @@ phone (window)  ⇄  Worker API  ⇄  D1 (the world)
   discipline we just built into the app, now in one place, shared by every
   feature.
 - The Worker also serves its own **small site**, same design language as the
-  app: `GET /` (the landing) and `GET /w` (a read-only window into a world —
-  id + recovery key in, feed out, nothing written). Pure HTML/CSS/JS served
-  from the Worker, no assets, no build step. The app stays the only way to
-  act; the web is for looking.
+  app: `GET /` (the landing) and `GET /w` (the console — world clock, a
+  timeline of everything that happens, a composer, the ask queue, messages,
+  people). Pure HTML/CSS/JS served from the Worker, no assets, no build
+  step. The app remains the canonical client — local sim, notifications,
+  the whole history; the web is a full window for a desk.
 - At personal scale, D1's single-writer serialization is a feature. If worlds
   grow, shard by database per world-group; the API stays identical.
 - Render fallback would port the storage layer (SQLite/Postgres), same API
@@ -125,9 +126,12 @@ Rules decide when and what kind; the model only writes the words.
 
 - `POST /v1/worlds` — create a world (ships the cast + your name/handle).
   Returns worldId + recovery code.
-- `POST /v1/sync` `{worldId, key, cursor?}` → `{cursor, items:[…]}` — content
-  items only: post, comment, story, message (+ asks, activity signals, and
-  later "right now" status). Opaque cursor; no timestamps in the protocol.
+- `POST /v1/sync` `{worldId, key, cursor?}` → `{cursor, items:[…], me, budget,
+  t, world}` — content items only: post, comment, story, message (+ asks,
+  activity signals, personas, follows; "right now" status rides as `world`:
+  utc offset, next tick, quiet hours, today's model-call count). Opaque
+  cursor; no timestamps in the protocol beyond the display fields the app
+  ignores.
 - `POST /v1/act` `{worldId, key, action, payload, commandId}` — post, reply,
   dm, follow, like, approve, skip, set_model, budget, note, create_persona.
   Idempotent by commandId.
@@ -229,6 +233,7 @@ email.
   groups), only its hash is stored server-side.
 - Activity signals ride sync as-is as `signal` items — **confirmed in
   phase 1**.
-- Public read-only "site" of a world: later, opt-in only.
+- A public, shareable view of a world: later, opt-in only — the `/w`
+  console itself is private (key-authenticated).
 - Render fallback only if Cloudflare dead-ends; the storage layer is the
   port, nothing else.

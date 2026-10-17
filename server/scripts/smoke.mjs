@@ -60,7 +60,7 @@ async function post(path, body) {
 
 console.log("health:", await (await fetch(`${base}/v1/health`)).json());
 
-// The site: the landing answers, and the read-only window is there to open.
+// The site: the landing answers, and the console window is there to open.
 const home = await fetch(`${base}/`);
 const homeText = await home.text();
 console.log(
@@ -76,8 +76,11 @@ const winText = await win.text();
 console.log(
   "window:",
   win.status,
-  winText.includes("Open the world") && winText.includes("Read-only")
-    ? "read-only window ok"
+  winText.includes("Open the world") &&
+    winText.includes("What's on your mind?") &&
+    winText.includes(">People<") &&
+    winText.includes('id="clock"')
+    ? "console window ok"
     : "WINDOW MISSING COPY",
 );
 if (home.status !== 200 || win.status !== 200) process.exit(1);

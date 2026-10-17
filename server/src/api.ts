@@ -22,7 +22,7 @@ import {
   setFollow,
 } from "./db";
 import type { AskRow, Env, PostRow, ReplyRow, WorldRow } from "./types";
-import { clamp, dayKey, hashKey, newId, newRecoveryKey, now, randInt, sameHash, json } from "./util";
+import { clamp, dayKey, hashKey, newId, newRecoveryKey, now, QUIET_FROM_MIN, QUIET_TO_MIN, randInt, sameHash, json } from "./util";
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -273,6 +273,20 @@ export async function handleSync(env: Env, body: Record<string, unknown>): Promi
     // Who you are over there — recovery on a new phone adopts this.
     me: { name: world.me_name, handle: world.me_handle, avatarIndex: world.me_avatar },
     budget: world.daily_budget,
+    // The window's clock and stats. `t` is the server's now, so the browser
+    // clock can be corrected against it; the app ignores what it doesn't use.
+    t,
+    world: {
+      id: world.id,
+      createdAt: world.created_at,
+      utcOffsetMinutes: world.utc_offset,
+      nextTickAt: world.next_tick_at,
+      quietFrom: QUIET_FROM_MIN,
+      quietTo: QUIET_TO_MIN,
+      callsToday: world.calls_today,
+      callsDay: world.calls_day,
+      dailyBudget: world.daily_budget,
+    },
   });
 }
 

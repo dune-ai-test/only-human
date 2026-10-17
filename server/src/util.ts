@@ -74,9 +74,12 @@ export function minuteOfDay(t: number, utcOffsetMin: number): number {
 }
 
 /** The world sleeps roughly 01:00–06:30, local to the human who made it. */
+export const QUIET_FROM_MIN = 60;
+export const QUIET_TO_MIN = 390;
+
 export function quietNow(t: number, utcOffsetMin: number): boolean {
   const m = minuteOfDay(t, utcOffsetMin);
-  return m >= 60 && m < 390;
+  return m >= QUIET_FROM_MIN && m < QUIET_TO_MIN;
 }
 
 /** The next 06:45–07:10 local morning, as epoch millis. */

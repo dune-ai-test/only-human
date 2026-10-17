@@ -20,7 +20,7 @@ export default {
     if (req.method === "GET" && url.pathname === "/v1/health") {
       return json({ ok: true, t: Date.now() });
     }
-    // The site: a quiet landing page, and the read-only window into a world.
+    // The site: a quiet landing page, and the console window into a world.
     if (req.method === "GET" || req.method === "HEAD") {
       if (url.pathname === "/") return htmlResponse(landingPage());
       if (url.pathname === "/w" || url.pathname === "/w/") return htmlResponse(windowPage());
