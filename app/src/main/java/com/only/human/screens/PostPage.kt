@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +62,12 @@ fun PostPage(postId: String, onBack: () -> Unit, onOpenProfile: (String) -> Unit
     val replies = World.repliesFor(postId)
     var replyOpen by remember { mutableStateOf(false) }
     val tabInset = LocalTabBarInset.current
+
+    // While you're here, replies land in the thread without pinging Activity.
+    DisposableEffect(postId) {
+        World.openPost = postId
+        onDispose { if (World.openPost == postId) World.openPost = null }
+    }
 
     Box(Modifier.fillMaxSize().background(c.grouped)) {
         LargeTitleScaffold(

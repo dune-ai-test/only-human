@@ -30,9 +30,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.only.human.design.colors
@@ -176,6 +180,12 @@ fun DmScreen(personaId: String, onBack: () -> Unit) {
     var draft by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val imeOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val sendDraft = {
+        if (draft.isNotBlank()) {
+            World.sendDm(personaId, draft)
+            draft = ""
+        }
+    }
 
     // Opening the thread reads it; arrivals while you're here stay read.
     LaunchedEffect(messages.size, isTyping) {
@@ -184,6 +194,12 @@ fun DmScreen(personaId: String, onBack: () -> Unit) {
             val target = if (isTyping) messages.size else messages.lastIndex
             listState.animateScrollToItem(target)
         }
+    }
+
+    // While the thread is open, arrivals are read on the spot — no Activity row.
+    DisposableEffect(personaId) {
+        World.openDm = personaId
+        onDispose { if (World.openDm == personaId) World.openDm = null }
     }
 
     Column(
@@ -265,6 +281,8 @@ fun DmScreen(personaId: String, onBack: () -> Unit) {
                         singleLine = true,
                         textStyle = t.subheadline.copy(color = c.label),
                         cursorBrush = SolidColor(c.accent),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { sendDraft() }),
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -279,10 +297,7 @@ fun DmScreen(personaId: String, onBack: () -> Unit) {
                     .iosClickable(
                         enabled = canSend,
                         scaleTo = 0.9f,
-                        onClick = {
-                            World.sendDm(personaId, draft)
-                            draft = ""
-                        },
+                        onClick = sendDraft,
                     ),
                 contentAlignment = Alignment.Center,
             ) {

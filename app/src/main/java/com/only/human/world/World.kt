@@ -49,6 +49,12 @@ object World {
     /** personaId -> the last time you opened their thread. */
     val dmSeen = mutableStateMapOf<String, Long>()
 
+    /** The DM thread on screen right now, if any — arrivals there read on the spot. */
+    var openDm by mutableStateOf<String?>(null)
+
+    /** The post page on screen right now, if any — replies there skip the Activity row. */
+    var openPost by mutableStateOf<String?>(null)
+
     /** Who the human is. Set once during onboarding, remembered forever. */
     var me by mutableStateOf(Me("You", "you", 0))
         private set
@@ -323,11 +329,14 @@ object World {
                 kind = ActivityKind.Reply,
             )
             persistReply(reply)
-            persistActivity(item)
             withContext(Dispatchers.Main) {
                 replies += reply
                 bumpReplyCount(postId)
-                activities.add(0, item)
+                // Reading the post right now? The reply shows up where you're looking.
+                if (openPost != postId) {
+                    persistActivity(item)
+                    activities.add(0, item)
+                }
             }
         }
     }
@@ -416,12 +425,18 @@ object World {
             createdAt = now,
             kind = ActivityKind.Message,
         )
+        val insideThread = openDm == personaId
         persistDm(dm)
-        persistActivity(item)
         withContext(Dispatchers.Main) {
             typing[personaId] = false
             dms += dm
-            activities.add(0, item)
+            if (insideThread) {
+                // You're in the thread — it's read the moment it lands.
+                markDmSeen(personaId)
+            } else {
+                persistActivity(item)
+                activities.add(0, item)
+            }
         }
     }
 

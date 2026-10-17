@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.only.human.design.Motion
@@ -110,12 +113,17 @@ fun Onboarding() {
         ) { s ->
             when (s) {
                 0 -> WelcomeStep()
-                1 -> NameStep(name = name, onName = { name = it })
+                1 -> NameStep(
+                    name = name,
+                    onName = { name = it },
+                    onDone = { if (nameValid) step++ },
+                )
                 2 -> HandleStep(
                     handle = handle,
                     onHandle = { raw ->
                         handle = raw.lowercase().filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(16)
                     },
+                    onDone = { if (handleValid) step++ },
                 )
                 else -> AvatarStep(
                     name = name,
@@ -188,7 +196,7 @@ private fun WelcomeStep() {
 }
 
 @Composable
-private fun NameStep(name: String, onName: (String) -> Unit) {
+private fun NameStep(name: String, onName: (String) -> Unit, onDone: () -> Unit) {
     val c = colors
     val t = type
     Column(Modifier.fillMaxSize().padding(horizontal = 28.dp)) {
@@ -206,12 +214,13 @@ private fun NameStep(name: String, onName: (String) -> Unit) {
             onValueChange = onName,
             placeholder = "Your name",
             maxChars = 24,
+            onDone = onDone,
         )
     }
 }
 
 @Composable
-private fun HandleStep(handle: String, onHandle: (String) -> Unit) {
+private fun HandleStep(handle: String, onHandle: (String) -> Unit, onDone: () -> Unit) {
     val c = colors
     val t = type
     Column(Modifier.fillMaxSize().padding(horizontal = 28.dp)) {
@@ -230,6 +239,7 @@ private fun HandleStep(handle: String, onHandle: (String) -> Unit) {
             placeholder = "username",
             prefix = "@",
             maxChars = 16,
+            onDone = onDone,
         )
         if (handle.length >= 3) {
             Spacer(Modifier.height(12.dp))
@@ -294,6 +304,7 @@ private fun OnboardField(
     placeholder: String,
     prefix: String? = null,
     maxChars: Int,
+    onDone: () -> Unit = {},
 ) {
     val c = colors
     val t = type
@@ -323,6 +334,8 @@ private fun OnboardField(
                 singleLine = true,
                 textStyle = t.body.copy(color = c.label),
                 cursorBrush = SolidColor(c.accent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onDone() }),
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focus),
