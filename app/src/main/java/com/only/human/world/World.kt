@@ -327,7 +327,7 @@ object World {
         appVisible = visible
     }
 
-    fun setNotifyEnabled(enabled: Boolean) {
+    fun enableNotifications(enabled: Boolean) {
         if (notifyEnabled == enabled) return
         notifyEnabled = enabled
         prefs?.edit()?.putBoolean(KEY_NOTIFY, enabled)?.apply()

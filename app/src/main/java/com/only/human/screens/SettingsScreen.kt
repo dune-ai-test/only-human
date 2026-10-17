@@ -35,15 +35,15 @@ fun SettingsScreen(onBack: () -> Unit, onOpenEngine: () -> Unit) {
     val context = LocalContext.current
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         // The switch follows the truth: granted or not.
-        World.setNotifyEnabled(granted)
+        World.enableNotifications(granted)
     }
     val onToggleNotifications: () -> Unit = {
         when {
-            World.notifyEnabled -> World.setNotifyEnabled(false)
+            World.notifyEnabled -> World.enableNotifications(false)
             Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
                 context, Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED -> permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            else -> World.setNotifyEnabled(true)
+            else -> World.enableNotifications(true)
         }
     }
 
