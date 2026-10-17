@@ -39,6 +39,7 @@ import com.only.human.world.World
 fun YouScreen(
     onOpenSettings: () -> Unit,
     onCompose: () -> Unit,
+    onOpenPost: (String) -> Unit,
 ) {
     val c = colors
     val t = type
@@ -112,7 +113,7 @@ fun YouScreen(
                     )
                 }
                 items(posts, key = { it.id }) { post ->
-                    PostRow(post = post, onOpenProfile = {})
+                    PostRow(post = post, onOpenProfile = {}, onOpenPost = onOpenPost)
                     Hairline(startInset = 68.dp)
                 }
             }

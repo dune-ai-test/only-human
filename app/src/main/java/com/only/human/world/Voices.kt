@@ -40,6 +40,31 @@ object Voices {
     /** A post that mentions @you. */
     fun mention(rng: Random): String = mentions.random(rng)
 
+    /** A short reply back, when a persona answers you directly. */
+    fun replyBack(id: String, rng: Random): String {
+        val pool = backReplies[id]
+        return pool?.random(rng) ?: replies.random(rng)
+    }
+
+    /** One-line replies, in voice, for when you talk back. */
+    private val backReplies: Map<String, List<String>> = mapOf(
+        "sofia" to listOf("OK this. this is exactly what i mean!!"),
+        "maya" to listOf("noted. filed under 'things you're right about'."),
+        "jordan" to listOf("okay that's a bar. stealing it for a lyric."),
+        "lena" to listOf("yes. that exact thing."),
+        "theo" to listOf("correct. annoyingly."),
+        "priya" to listOf("okay NOW i'm hungry and it's your fault."),
+        "sam" to listOf("agreed. and short. respect."),
+        "nina" to listOf("you say things plain. i admire that."),
+        "marcus" to listOf("correct. shipping this opinion."),
+        "elena" to listOf("this genuinely made my morning."),
+        "kai" to listOf("yes."),
+        "dev" to listOf("see, this is the part everyone else skips. good."),
+        "alice" to listOf("i have THOUGHTS and they're all yes."),
+        "ben" to listOf("man. yeah. that's the whole thing, isn't it."),
+        "rosa" to listOf("this. quietly, this."),
+    )
+
     private val replies = listOf(
         "this is the most honest thing i've read all week.",
         "ok but you didn't have to say it like that.",

@@ -9,9 +9,11 @@ import com.only.human.data.FollowEntity
 import com.only.human.data.OhDao
 import com.only.human.data.OhDatabase
 import com.only.human.data.PostEntity
+import com.only.human.data.ReplyEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
@@ -28,6 +30,7 @@ object World {
 
     val posts = mutableStateListOf<Post>()
     val activities = mutableStateListOf<ActivityItem>()
+    val replies = mutableStateListOf<Reply>()
 
     /** personaId -> you follow them. */
     val following = mutableStateMapOf<String, Boolean>()
@@ -70,6 +73,7 @@ object World {
         val base = System.currentTimeMillis()
         posts.addAll(Seed.posts(base))
         activities.addAll(Seed.activities(base))
+        replies.addAll(Seed.replies(base))
 
         scope.launch {
             val dao = db.dao()
@@ -77,6 +81,7 @@ object World {
             if (firstRun) {
                 dao.upsertPosts(posts.map { it.toEntity() })
                 dao.upsertActivities(activities.map { it.toEntity() })
+                dao.upsertReplies(replies.map { it.toEntity() })
                 following.forEach { (id, value) ->
                     dao.upsertFollow(FollowEntity(id, value, followedBy[id] == true))
                 }
@@ -90,12 +95,15 @@ object World {
 
             val storedPosts = dao.posts().map { it.toModel() }
             val storedActivities = dao.activities().map { it.toModel() }
+            val storedReplies = dao.replies().map { it.toModel() }
             val storedFollows = dao.follows()
             withContext(Dispatchers.Main) {
                 posts.clear()
                 posts.addAll(storedPosts)
                 activities.clear()
                 activities.addAll(storedActivities)
+                replies.clear()
+                replies.addAll(storedReplies)
                 storedFollows.forEach {
                     following[it.personaId] = it.following
                     followedBy[it.personaId] = it.followsYou
@@ -143,6 +151,81 @@ object World {
         )
         posts.add(0, post)
         persistPost(post)
+    }
+
+    // ---- replies ---------------------------------------------------------
+
+    fun repliesFor(postId: String): List<Reply> =
+        replies.filter { it.postId == postId }.sortedBy { it.createdAt }
+
+    fun addReply(postId: String, text: String) {
+        val reply = Reply(
+            id = "local-r-${System.currentTimeMillis()}-${postSeq++}",
+            postId = postId,
+            authorId = "you",
+            text = text,
+            createdAt = System.currentTimeMillis(),
+        )
+        replies += reply
+        bumpReplyCount(postId)
+        persistReply(reply)
+        schedulePersonaReply(postId)
+    }
+
+    private fun bumpReplyCount(postId: String) {
+        val index = posts.indexOfFirst { it.id == postId }
+        if (index < 0) return
+        val updated = posts[index].copy(replies = posts[index].replies + 1)
+        posts[index] = updated
+        persistPost(updated)
+    }
+
+    /**
+     * The author writes back shortly after — like a person, not a webhook.
+     * Skipped now and then so it never feels automatic.
+     */
+    private fun schedulePersonaReply(postId: String) {
+        val post = posts.firstOrNull { it.id == postId } ?: return
+        if (post.authorId == "you") return
+        if (Random.nextDouble() > 0.65) return
+        if (post.authorId == "kai" && Random.nextDouble() < 0.6) return
+        val authorId = post.authorId
+        scope.launch {
+            delay((9_000L..28_000L).random())
+            val persona = Cast.byId(authorId)
+            val reply = Reply(
+                id = "voice-r-${System.currentTimeMillis()}-${authorId}",
+                postId = postId,
+                authorId = authorId,
+                text = Voices.replyBack(authorId, Random),
+                createdAt = System.currentTimeMillis(),
+            )
+            val item = ActivityItem(
+                id = reply.id,
+                personaId = authorId,
+                boldPart = persona.name,
+                rest = " replied: \u201C${reply.text}\u201D",
+                createdAt = reply.createdAt,
+                kind = ActivityKind.Reply,
+            )
+            persistReply(reply)
+            persistActivity(item)
+            withContext(Dispatchers.Main) {
+                replies += reply
+                bumpReplyCount(postId)
+                activities.add(0, item)
+            }
+        }
+    }
+
+    private fun persistReply(reply: Reply) {
+        val db = database ?: return
+        scope.launch { db.dao().upsertReply(reply.toEntity()) }
+    }
+
+    private fun persistActivity(item: ActivityItem) {
+        val db = database ?: return
+        scope.launch { db.dao().upsertActivity(item.toEntity()) }
     }
 
     fun toggleLike(postId: String) {
@@ -195,6 +278,22 @@ private fun PostEntity.toModel() = Post(
     likes = likes,
     replies = replies,
     likedByYou = likedByYou,
+)
+
+private fun Reply.toEntity() = ReplyEntity(
+    id = id,
+    postId = postId,
+    authorId = authorId,
+    text = text,
+    createdAt = createdAt,
+)
+
+private fun ReplyEntity.toModel() = Reply(
+    id = id,
+    postId = postId,
+    authorId = authorId,
+    text = text,
+    createdAt = createdAt,
 )
 
 private fun ActivityItem.toEntity() = ActivityEntity(
@@ -327,5 +426,35 @@ private object Seed {
         rest = rest,
         createdAt = base - minutesAgo * 60_000L,
         kind = kind,
+    )
+
+    fun replies(base: Long): List<Reply> = listOf(
+        rep("r1", "p1", "theo", "welcome. the initiation is reading everything we've ever posted. take your time.", 2, base),
+        rep("r2", "p1", "elena", "welcome in! biscuit says hi too (he says hi to everyone, but still).", 1, base),
+        rep("r3", "p4", "maya", "greg will forgive you for a month and then collapse dramatically. succulents are like that.", 50, base),
+        rep("r4", "p4", "priya", "plants are just slow cooking. give greg a window and time.", 42, base),
+        rep("r5", "p7", "alice", "THE dal or 'the dal'? there is a difference and we all know it.", 170, base),
+        rep("r6", "p7", "dev", "the secret ingredient is that you'll never be the same person twice. the dal knows.", 165, base),
+        rep("r7", "p10", "sofia", "he says this every time and every time he walks home damp.", 295, base),
+        rep("r8", "p10", "nina", "umbrellas are for people whose hair forgives them.", 290, base),
+        rep("r9", "p15", "elena", "we'll take the long way tomorrow in your honor. biscuit plans to sniff everything.", 650, base),
+        rep("r10", "p15", "kai", "some weeks are. yes.", 640, base),
+        rep("r11", "p16", "sofia", "kai this is the third one this month. ONE detail. i'm asking nicely.", 1430, base),
+        rep("r12", "p16", "theo", "what did you see.", 1420, base),
+    )
+
+    private fun rep(
+        id: String,
+        post: String,
+        author: String,
+        text: String,
+        minutesAgo: Int,
+        base: Long,
+    ): Reply = Reply(
+        id = id,
+        postId = post,
+        authorId = author,
+        text = text,
+        createdAt = base - minutesAgo * 60_000L,
     )
 }

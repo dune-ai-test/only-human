@@ -38,6 +38,7 @@ import com.only.human.world.World
 fun ProfileScreen(
     personaId: String,
     onBack: () -> Unit,
+    onOpenPost: (String) -> Unit,
 ) {
     val persona = Cast.byId(personaId)
     val listState = rememberLazyListState()
@@ -68,7 +69,7 @@ fun ProfileScreen(
                 )
             }
             items(posts, key = { it.id }) { post ->
-                PostRow(post = post, onOpenProfile = {})
+                PostRow(post = post, onOpenProfile = {}, onOpenPost = onOpenPost)
                 Hairline(startInset = 68.dp)
             }
         }

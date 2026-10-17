@@ -36,6 +36,7 @@ import com.only.human.screens.ComposerSheet
 import com.only.human.screens.DiscoverScreen
 import com.only.human.screens.FeedScreen
 import com.only.human.screens.NotificationsScreen
+import com.only.human.screens.PostPage
 import com.only.human.screens.ProfileScreen
 import com.only.human.screens.SettingsScreen
 import com.only.human.screens.YouScreen
@@ -45,6 +46,7 @@ import com.only.human.world.World
 sealed interface Route {
     data class Home(val tab: Int) : Route
     data class Person(val id: String) : Route
+    data class Post(val id: String) : Route
     data object Settings : Route
 }
 
@@ -108,17 +110,27 @@ fun AppShell() {
             ) { screenKey ->
                 when (val route = screenKey.route) {
                     is Route.Home -> when (route.tab) {
-                        0 -> FeedScreen(onOpenProfile = { nav.push(Route.Person(it)) })
+                        0 -> FeedScreen(
+                            onOpenProfile = { nav.push(Route.Person(it)) },
+                            onOpenPost = { nav.push(Route.Post(it)) },
+                        )
                         1 -> DiscoverScreen(onOpenProfile = { nav.push(Route.Person(it)) })
                         3 -> NotificationsScreen(onOpenProfile = { nav.push(Route.Person(it)) })
                         else -> YouScreen(
                             onOpenSettings = { nav.push(Route.Settings) },
                             onCompose = { composerOpen = true },
+                            onOpenPost = { nav.push(Route.Post(it)) },
                         )
                     }
                     is Route.Person -> ProfileScreen(
                         personaId = route.id,
                         onBack = { nav.pop() },
+                        onOpenPost = { nav.push(Route.Post(it)) },
+                    )
+                    is Route.Post -> PostPage(
+                        postId = route.id,
+                        onBack = { nav.pop() },
+                        onOpenProfile = { nav.push(Route.Person(it)) },
                     )
                     Route.Settings -> SettingsScreen(onBack = { nav.pop() })
                 }

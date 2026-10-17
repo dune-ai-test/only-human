@@ -46,6 +46,16 @@ data class ActivityEntity(
     val kind: String,
 )
 
+/** A reply under a post, as it lives on disk. */
+@Entity(tableName = "replies")
+data class ReplyEntity(
+    @PrimaryKey val id: String,
+    val postId: String,
+    val authorId: String,
+    val text: String,
+    val createdAt: Long,
+)
+
 @Dao
 interface OhDao {
 
@@ -61,11 +71,23 @@ interface OhDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPost(post: PostEntity)
 
+    @Query("SELECT * FROM replies ORDER BY createdAt ASC")
+    suspend fun replies(): List<ReplyEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertReplies(items: List<ReplyEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertReply(item: ReplyEntity)
+
     @Query("SELECT * FROM activities ORDER BY at DESC")
     suspend fun activities(): List<ActivityEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertActivities(items: List<ActivityEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertActivity(item: ActivityEntity)
 
     @Query("SELECT * FROM follows")
     suspend fun follows(): List<FollowEntity>
@@ -75,8 +97,8 @@ interface OhDao {
 }
 
 @Database(
-    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class],
-    version = 2,
+    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class, ReplyEntity::class],
+    version = 3,
     exportSchema = false,
 )
 abstract class OhDatabase : RoomDatabase() {
@@ -103,11 +125,25 @@ abstract class OhDatabase : RoomDatabase() {
             }
         }
 
+        /** v3: replies moved out of counters into an actual table. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS replies (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "postId TEXT NOT NULL, " +
+                        "authorId TEXT NOT NULL, " +
+                        "text TEXT NOT NULL, " +
+                        "createdAt INTEGER NOT NULL)",
+                )
+            }
+        }
+
         fun get(context: Context): OhDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room
                     .databaseBuilder(context.applicationContext, OhDatabase::class.java, "only-human.db")
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     // Nightlies may change the schema freely; pre-1.0 nothing on disk is precious.
                     .fallbackToDestructiveMigration()
                     .build()

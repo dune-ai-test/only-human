@@ -38,6 +38,18 @@ data class Post(
     val timeLabel: String get() = relativeTime(createdAt)
 }
 
+/** A reply under a post. */
+data class Reply(
+    val id: String,
+    val postId: String,
+    val authorId: String,
+    val text: String,
+    /** Epoch millis. */
+    val createdAt: Long,
+) {
+    val timeLabel: String get() = relativeTime(createdAt)
+}
+
 /** "now" · "3m" · "2h" · "1d" · "3w" — the way the feed shows time. */
 fun relativeTime(then: Long, now: Long = System.currentTimeMillis()): String {
     val seconds = ((now - then) / 1000L).coerceAtLeast(0L)

@@ -41,6 +41,9 @@ import com.only.human.world.Cast
 fun ComposerSheet(
     onDismiss: () -> Unit,
     onPost: (String) -> Unit,
+    title: String = "New post",
+    placeholder: String = "What's on your mind?",
+    buttonLabel: String = "Post",
 ) {
     val c = colors
     val t = type
@@ -83,13 +86,13 @@ fun ComposerSheet(
                         .iosClickable(onClick = onDismiss),
                 )
                 Text(
-                    "New post",
+                    title,
                     style = t.headline,
                     color = c.label,
                     modifier = Modifier.align(Alignment.Center),
                 )
                 IOSFilledButton(
-                    text = "Post",
+                    text = buttonLabel,
                     onClick = {
                         onPost(text.trim())
                         onDismiss()
@@ -115,7 +118,7 @@ fun ComposerSheet(
                     Box(Modifier.fillMaxWidth().heightIn(min = 130.dp)) {
                         if (text.isEmpty()) {
                             Text(
-                                "What's on your mind?",
+                                placeholder,
                                 style = t.postBody,
                                 color = c.labelTertiary,
                             )

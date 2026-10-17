@@ -46,7 +46,7 @@ import com.only.human.world.World
 import kotlinx.coroutines.delay
 
 @Composable
-fun FeedScreen(onOpenProfile: (String) -> Unit) {
+fun FeedScreen(onOpenProfile: (String) -> Unit, onOpenPost: (String) -> Unit) {
     val listState = rememberLazyListState()
     val offset = rememberCollapseOffset(listState)
 
@@ -61,47 +61,35 @@ fun FeedScreen(onOpenProfile: (String) -> Unit) {
         ) {
             item(key = "header") { LargeTitleHeader("Feed") }
             items(World.posts, key = { it.id }) { post ->
-                PostRow(post = post, onOpenProfile = onOpenProfile)
+                PostRow(post = post, onOpenProfile = onOpenProfile, onOpenPost = onOpenPost)
                 Hairline(startInset = 68.dp)
             }
         }
     }
 }
 
+/** One post in a list. Tapping it opens the post page. */
 @Composable
 fun PostRow(
     post: Post,
     onOpenProfile: (String) -> Unit,
+    onOpenPost: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val c = colors
     val t = type
     val persona = Cast.byId(post.authorId)
-    val tick = rememberTick()
-
-    var popped by remember { mutableStateOf(false) }
-    LaunchedEffect(post.likedByYou) {
-        if (post.likedByYou) {
-            popped = true
-            delay(140)
-            popped = false
-        }
-    }
-    val heartScale by animateFloatAsState(
-        targetValue = if (popped) 1.3f else 1f,
-        animationSpec = Motion.bouncyPop,
-        label = "heart-pop",
-    )
 
     Row(
         modifier
             .fillMaxWidth()
+            .iosClickable(onClick = { onOpenPost(post.id) })
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
     ) {
         MonogramAvatar(
-            gradient = persona.gradient,
-            initials = persona.initials,
-            size = 40.dp,
+            persona.gradient,
+            persona.initials,
+            40.dp,
             modifier = Modifier.iosClickable(scaleTo = 0.92f, onClick = { onOpenProfile(persona.id) }),
         )
         Spacer(Modifier.width(12.dp))
@@ -125,33 +113,62 @@ fun PostRow(
             Text(post.text, style = t.postBody, color = c.label)
             Spacer(Modifier.height(11.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                ActionCount(OhIcons.Bubble, post.replies, c.iconGray)
-                Row(
-                    Modifier.iosClickable(haptic = tick, onClick = { World.toggleLike(post.id) }),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = if (post.likedByYou) OhIcons.HeartFill else OhIcons.Heart,
-                        contentDescription = "Like",
-                        tint = if (post.likedByYou) c.red else c.iconGray,
-                        modifier = Modifier
-                            .size(17.dp)
-                            .graphicsLayer {
-                                scaleX = heartScale
-                                scaleY = heartScale
-                            },
-                    )
-                    if (post.likes > 0) {
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            text = com.only.human.design.components.formatCount(post.likes),
-                            style = t.footnote,
-                            color = if (post.likedByYou) c.red else c.iconGray,
-                        )
-                    }
-                }
+                ActionCount(
+                    icon = OhIcons.Bubble,
+                    count = post.replies,
+                    tint = c.iconGray,
+                    onClick = { onOpenPost(post.id) },
+                )
+                LikeAction(post)
                 ActionCount(OhIcons.Share, null, c.iconGray)
             }
+        }
+    }
+}
+
+/** Heart + count with the pop. Shared by the feed and the post page. */
+@Composable
+fun LikeAction(post: Post, modifier: Modifier = Modifier) {
+    val c = colors
+    val t = type
+    val tick = rememberTick()
+
+    var popped by remember { mutableStateOf(false) }
+    LaunchedEffect(post.likedByYou) {
+        if (post.likedByYou) {
+            popped = true
+            delay(140)
+            popped = false
+        }
+    }
+    val heartScale by animateFloatAsState(
+        targetValue = if (popped) 1.3f else 1f,
+        animationSpec = Motion.bouncyPop,
+        label = "heart-pop",
+    )
+
+    Row(
+        modifier.iosClickable(haptic = tick, onClick = { World.toggleLike(post.id) }),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (post.likedByYou) OhIcons.HeartFill else OhIcons.Heart,
+            contentDescription = "Like",
+            tint = if (post.likedByYou) c.red else c.iconGray,
+            modifier = Modifier
+                .size(17.dp)
+                .graphicsLayer {
+                    scaleX = heartScale
+                    scaleY = heartScale
+                },
+        )
+        if (post.likes > 0) {
+            Spacer(Modifier.width(5.dp))
+            Text(
+                text = com.only.human.design.components.formatCount(post.likes),
+                style = t.footnote,
+                color = if (post.likedByYou) c.red else c.iconGray,
+            )
         }
     }
 }
