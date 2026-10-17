@@ -60,6 +60,16 @@ fun FeedScreen(onOpenProfile: (String) -> Unit, onOpenPost: (String) -> Unit) {
             ),
         ) {
             item(key = "header") { LargeTitleHeader("Feed") }
+            if (World.posts.isEmpty()) {
+                item(key = "empty-feed") {
+                    Text(
+                        "quiet right now — they're just waking up.",
+                        style = type.footnote,
+                        color = colors.labelSecondary,
+                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 18.dp),
+                    )
+                }
+            }
             items(World.posts, key = { it.id }) { post ->
                 PostRow(post = post, onOpenProfile = onOpenProfile, onOpenPost = onOpenPost)
                 Hairline(startInset = 68.dp)

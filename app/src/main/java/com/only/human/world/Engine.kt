@@ -12,30 +12,28 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * The AI engine.
+ * The AI engine — the only source of words on Only Human.
  *
- * When configured, the fifteen stop drawing from [Voices] and start actually
- * writing — post replies, DMs, the welcome — through any OpenAI-compatible
- * endpoint. Kilo Gateway is pre-filled because it's the one we test against:
- * https://ai-gateway.kilo.ai/api/v1 (paste an API key in Settings).
+ * Every post, reply and DM is written here, through any OpenAI-compatible
+ * endpoint. Kilo's gateway is pre-filled out of the box (free models, no
+ * key needed): https://api.kilo.ai/api/gateway. The key stays optional —
+ * local servers (Ollama, LM Studio, llama.cpp) mostly don't want one; a
+ * blank key just means no Authorization header. The model list is fetched
+ * from the endpoint's /models and cached on this device.
  *
- * The key is optional — local servers (Ollama, LM Studio, llama.cpp) mostly
- * don't want one; a blank key just means no Authorization header. The model
- * list is fetched from the endpoint's /v1/models and cached on this device.
- *
- * Offline remains a first-class state: engine off, and the app behaves
- * exactly as it always has. Nothing here throws; failures fall back.
+ * Nothing here throws. When a write fails, the moment it belonged to
+ * quietly doesn't happen — there is no canned fallback.
  */
 object Engine {
 
-    const val DEFAULT_ENDPOINT = "https://ai-gateway.kilo.ai/api/v1"
-    const val DEFAULT_MODEL = "anthropic/claude-sonnet-4.5"
+    const val DEFAULT_ENDPOINT = "https://api.kilo.ai/api/gateway"
+    const val DEFAULT_MODEL = "poolside/laguna-s-2.1:free"
 
     data class Config(
         val endpoint: String = DEFAULT_ENDPOINT,
         val model: String = DEFAULT_MODEL,
         val apiKey: String = "",
-        val on: Boolean = false,
+        val on: Boolean = true,
     ) {
         /** The whole thing is wired up and switched on. A key is optional. */
         val ready: Boolean
@@ -57,7 +55,7 @@ object Engine {
             endpoint = prefs.getString(KEY_ENDPOINT, DEFAULT_ENDPOINT) ?: DEFAULT_ENDPOINT,
             model = prefs.getString(KEY_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL,
             apiKey = prefs.getString(KEY_KEY, "") ?: "",
-            on = prefs.getBoolean(KEY_ON, false),
+            on = prefs.getBoolean(KEY_ON, true),
         )
     }
 
@@ -122,11 +120,14 @@ object Engine {
                 lastError = "HTTP $code — ${apiError(text)}"
                 return@withContext null
             }
+            // A JSON null (or the literal "null" org.json hands back for one)
+            // means the model produced nothing visible — treat it as a miss.
             val content = JSONObject(text)
                 .optJSONArray("choices")?.optJSONObject(0)
                 ?.optJSONObject("message")?.optString("content")
                 ?.trim()
-            if (content.isNullOrEmpty()) {
+                ?.takeIf { it.isNotEmpty() && it != "null" }
+            if (content == null) {
                 lastError = "Empty response"
                 return@withContext null
             }

@@ -5,31 +5,49 @@ import kotlin.random.Random
 /**
  * The catch-up engine: what the fifteen did while you were away.
  *
- * Bounded (they are fifteen people, not a content farm), written in their own
- * voices via [Voices], and idempotent — the caller persists the result and
- * moves the "last visit" marker forward, so a given absence simulates once.
+ * It only decides *who* did *what, when* — the words themselves are written
+ * for real afterwards, one live call per post, reply, mention and DM. No
+ * canned lines live here; if a write fails, that moment quietly doesn't
+ * happen. Bounded — they are fifteen people, not a content farm — and
+ * idempotent: the caller schedules the intents once and moves the "last
+ * visit" marker forward.
  */
 object Simulation {
 
-    class Result {
-        /** New posts they wrote while you were gone. */
-        val posts = mutableListOf<Post>()
+    /** Someone posted — the text gets written for real later. */
+    class PostIntent(val personaId: String, val at: Long)
 
-        /** Existing posts whose like/reply counts moved. */
+    /** Someone replied to one of your posts — text written later. */
+    class ReplyIntent(val personaId: String, val postId: String, val at: Long)
+
+    /** Someone sent you a DM — text written later. */
+    class DmIntent(val personaId: String, val at: Long)
+
+    class Result {
+        /** Existing posts whose like counts moved — no new text involved. */
         val edited = mutableListOf<Post>()
 
-        /** Activity-tab rows worth telling you about. */
+        /** Activity rows that only reference text that already exists. */
         val activities = mutableListOf<ActivityItem>()
 
         /** Personas who started following you. */
         val followsYou = mutableMapOf<String, Boolean>()
 
-        /** Private messages that arrived while you were away. */
-        val dms = mutableListOf<Dm>()
+        /** Posts that need real text written before they can exist. */
+        val posts = mutableListOf<PostIntent>()
+
+        /** Replies to your posts that need real text. */
+        val replies = mutableListOf<ReplyIntent>()
+
+        /** A post that mentions you, needing real text. */
+        var mention: PostIntent? = null
+
+        /** DMs that need real text. */
+        val dms = mutableListOf<DmIntent>()
 
         val isEmpty: Boolean
-            get() = posts.isEmpty() && edited.isEmpty() && activities.isEmpty() &&
-                followsYou.isEmpty() && dms.isEmpty()
+            get() = edited.isEmpty() && activities.isEmpty() && followsYou.isEmpty() &&
+                posts.isEmpty() && replies.isEmpty() && mention == null && dms.isEmpty()
     }
 
     /** How chatty each of them is, relative to the others. */
@@ -41,14 +59,12 @@ object Simulation {
     /**
      * [from] — when you left. [to] — now, when you came back.
      * [followedYou] — personaId -> do they already follow you.
-     * [myHandle] — your username, so mentions say the right name.
      */
     fun catchUp(
         from: Long,
         to: Long,
         allPosts: List<Post>,
         followedYou: Map<String, Boolean>,
-        myHandle: String,
         rng: Random,
     ): Result {
         val result = Result()
@@ -71,14 +87,7 @@ object Simulation {
             i++
             if (rng.nextDouble() > (chatty[who.id] ?: 1.0)) continue
             val at = from + (gap * rng.nextDouble()).toLong()
-            result.posts += Post(
-                id = "sim-${at}-${who.id}-${rng.nextInt(100_000)}",
-                authorId = who.id,
-                text = Voices.post(who.id, at, rng),
-                createdAt = at,
-                likes = 4 + rng.nextInt(24) + who.followerBoost / 24,
-                replies = rng.nextInt(5),
-            )
+            result.posts += PostIntent(who.id, at)
             made++
         }
 
@@ -127,7 +136,7 @@ object Simulation {
             }
         }
 
-        // --- replies to something you posted
+        // --- replies to something you posted — written for real, later
         if (hours > 2.0 && mine.isNotEmpty()) {
             val replies = when {
                 rng.nextDouble() < 0.35 -> 2
@@ -139,17 +148,7 @@ object Simulation {
                 val who = Cast.people.filter { used.add(it.id) }.random(rng)
                 val target = mine.random(rng)
                 val at = (from + gap * (0.25 + 0.7 * rng.nextDouble())).toLong()
-                val before = updated.getValue(target.id)
-                updated[target.id] = before.copy(replies = before.replies + 1)
-                touched += target.id
-                result.activities += ActivityItem(
-                    id = "sim-reply-${target.id}-${who.id}",
-                    personaId = who.id,
-                    boldPart = who.name,
-                    rest = " replied: \u201C${Voices.reply(rng)}\u201D",
-                    createdAt = at,
-                    kind = ActivityKind.Reply,
-                )
+                result.replies += ReplyIntent(who.id, target.id, at)
             }
         }
 
@@ -157,22 +156,7 @@ object Simulation {
         if (hours > 2.0 && mine.isNotEmpty() && rng.nextDouble() < 0.5) {
             val who = Cast.people.filter { it.id != "kai" }.random(rng)
             val at = (from + gap * (0.4 + 0.55 * rng.nextDouble())).toLong()
-            result.posts += Post(
-                id = "sim-mention-${at}-${who.id}",
-                authorId = who.id,
-                text = Voices.mention(rng).replace("@you", "@$myHandle"),
-                createdAt = at,
-                likes = 6 + rng.nextInt(30) + who.followerBoost / 30,
-                replies = rng.nextInt(3),
-            )
-            result.activities += ActivityItem(
-                id = "sim-mention-a-$at",
-                personaId = who.id,
-                boldPart = who.name,
-                rest = " mentioned you in a post",
-                createdAt = at,
-                kind = ActivityKind.Mention,
-            )
+            result.mention = PostIntent(who.id, at)
         }
 
         // --- a message or two: not everything belongs in public
@@ -182,21 +166,7 @@ object Simulation {
             val chance = (0.10 + (hours / 100.0)).coerceAtMost(0.45)
             if (rng.nextDouble() > chance) continue
             val at = (from + gap * (0.3 + 0.6 * rng.nextDouble())).toLong()
-            result.dms += Dm(
-                id = "sim-dm-$at-${p.id}",
-                personaId = p.id,
-                fromMe = false,
-                text = Voices.dmOpen(p.id, rng),
-                at = at,
-            )
-            result.activities += ActivityItem(
-                id = "sim-dm-a-$at-${p.id}",
-                personaId = p.id,
-                boldPart = p.name,
-                rest = " sent you a message",
-                createdAt = at,
-                kind = ActivityKind.Message,
-            )
+            result.dms += DmIntent(p.id, at)
             sends++
         }
 

@@ -128,7 +128,7 @@ fun YouScreen(
                         subtitle = if (engine.ready) {
                             "On · ${engine.model}"
                         } else {
-                            "Offline voices — they still write"
+                            "Off — the fifteen are quiet"
                         },
                         trailing = { RowChevron() },
                         showDivider = true,

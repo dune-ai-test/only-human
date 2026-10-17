@@ -28,7 +28,8 @@ import kotlin.random.Random
  * The UI reads from here; every write goes through here into Room. Coming
  * back after a gap runs the catch-up simulation: the fifteen post, reply,
  * follow and DM while you're gone, and the feed and Activity tab show what
- * you missed — in their own voices, LLM or not.
+ * you missed — every word written live by the engine, never canned. If a
+ * write fails, that moment quietly doesn't happen.
  */
 object World {
 
@@ -106,10 +107,10 @@ object World {
     }
 
     /**
-     * Show the world immediately, then reconcile with disk: the first launch
-     * seeds Room, every launch after restores what actually happened — and
-     * simulates the time you were away. Before onboarding, nothing is seeded:
-     * the world is written around your name.
+     * Show the world immediately, then reconcile with disk: everything shown
+     * is what actually happened — restored from Room, with any time you were
+     * away simulated for real. Before onboarding, nothing exists yet: the
+     * world gets written around your name.
      */
     fun start(context: Context) {
         if (database != null) return
@@ -130,13 +131,6 @@ object World {
         }
         activitySeenAt = p.getLong(KEY_ACTIVITY_SEEN, 0L)
         Cast.people.forEach { dmSeen[it.id] = p.getLong("dmSeen_${it.id}", 0L) }
-
-        if (onboarded) {
-            val base = System.currentTimeMillis()
-            posts.addAll(Seed.posts(base, me.handle))
-            activities.addAll(Seed.activities(base))
-            replies.addAll(Seed.replies(base))
-        }
 
         scope.launch {
             val dao = db.dao()
@@ -163,7 +157,7 @@ object World {
             val storedFollows = dao.follows()
             withContext(Dispatchers.Main) {
                 // If onboarding completed while this boot was still running,
-                // the freshly seeded world in memory is the truth — keep it.
+                // the freshly written world in memory is the truth — keep it.
                 if (storedPosts.isNotEmpty() || !onboarded) {
                     posts.clear()
                     posts.addAll(storedPosts)
@@ -184,8 +178,8 @@ object World {
     }
 
     /**
-     * Onboarding finished: remember who you are, seed the world around the
-     * name, and let Sofia do what Sofia does.
+     * Onboarding finished: remember who you are, note the welcome, and let
+     * Sofia do what Sofia does.
      */
     fun completeOnboarding(name: String, handle: String, avatarIndex: Int) {
         val cleanName = name.trim().take(24)
@@ -202,28 +196,32 @@ object World {
             ?.putLong(KEY_ACTIVITY_SEEN, activitySeenAt)
             ?.apply()
 
+        // The world starts empty and fills up for real: a system welcome
+        // note, then the fifteen wake up one by one and write.
         val base = System.currentTimeMillis()
-        if (posts.isEmpty()) {
-            posts.addAll(Seed.posts(base, cleanHandle))
-            activities.addAll(Seed.activities(base))
-            replies.addAll(Seed.replies(base))
-        }
+        activities.add(
+            ActivityItem(
+                id = "welcome-$base",
+                personaId = "you",
+                boldPart = "Welcome to Only Human",
+                rest = " — fifteen people just got a new neighbor.",
+                createdAt = base - 10 * 60_000L,
+                kind = ActivityKind.System,
+            ),
+        )
 
         scope.launch {
             val dao = database?.dao() ?: return@launch
-            if (dao.postCount() == 0) {
-                dao.upsertPosts(posts.map { it.toEntity() })
-                dao.upsertActivities(activities.map { it.toEntity() })
-                dao.upsertReplies(replies.map { it.toEntity() })
-                following.forEach { (id, value) ->
-                    dao.upsertFollow(FollowEntity(id, value, followedBy[id] == true))
-                }
+            dao.upsertActivities(activities.map { it.toEntity() })
+            following.forEach { (id, value) ->
+                dao.upsertFollow(FollowEntity(id, value, followedBy[id] == true))
             }
             prefs?.edit()?.putLong(KEY_LAST_VISIT, System.currentTimeMillis())?.apply()
-            // Sofia can't help herself — the first DM arrives shortly after
-            // you move in.
-            welcomeDm("sofia")
         }
+        // Sofia can't help herself — the first DM arrives shortly after
+        // you move in. And the rest of the neighborhood is waking up.
+        welcomeDm("sofia")
+        warmUpWorld()
     }
 
     /**
@@ -234,6 +232,11 @@ object World {
         prefs?.edit()?.putLong(KEY_LAST_VISIT, System.currentTimeMillis())?.apply()
     }
 
+    /**
+     * The time you were away: metrics first (likes on existing text,
+     * follows), then every word that needs writing is actually written —
+     * one live call at a time, arriving as it's ready.
+     */
     private suspend fun runCatchUp(dao: OhDao, from: Long, to: Long) {
         val followRows = dao.follows()
         val result = Simulation.catchUp(
@@ -241,18 +244,16 @@ object World {
             to = to,
             allPosts = dao.posts().map { it.toModel() },
             followedYou = followRows.associate { it.personaId to it.followsYou },
-            myHandle = me.handle,
             rng = Random(from xor to),
         )
         if (result.isEmpty) return
-        if (result.posts.isNotEmpty()) dao.upsertPosts(result.posts.map { it.toEntity() })
         if (result.edited.isNotEmpty()) dao.upsertPosts(result.edited.map { it.toEntity() })
         if (result.activities.isNotEmpty()) dao.upsertActivities(result.activities.map { it.toEntity() })
-        if (result.dms.isNotEmpty()) dao.upsertDms(result.dms.map { it.toEntity() })
         result.followsYou.forEach { (id, value) ->
             val mine = followRows.firstOrNull { it.personaId == id }?.following ?: (following[id] == true)
             dao.upsertFollow(FollowEntity(id, mine, value))
         }
+        writeAway(result)
     }
 
     fun addPost(text: String, authorId: String = "you") {
@@ -297,9 +298,8 @@ object World {
 
     /**
      * The author writes back shortly after — like a person, not a webhook.
-     * Skipped now and then so it never feels automatic. When the AI engine is
-     * configured, the reply is actually written, in their voice; otherwise it
-     * comes from the offline lines.
+     * Skipped now and then so it never feels automatic, and only when the
+     * engine can actually write it — a failed write means no reply at all.
      */
     private fun schedulePersonaReply(postId: String) {
         val post = posts.firstOrNull { it.id == postId } ?: return
@@ -311,8 +311,7 @@ object World {
             delay((9_000L..28_000L).random())
             val persona = Cast.byId(authorId)
             val myReply = replies.lastOrNull { it.postId == postId && it.authorId == "you" }?.text
-            val text = (if (myReply != null) engineReplyText(persona, post, myReply) else null)
-                ?: Voices.replyBack(authorId, Random)
+            val text = engineReplyText(persona, post, myReply) ?: return@launch
             val reply = Reply(
                 id = "voice-r-${System.currentTimeMillis()}-${authorId}",
                 postId = postId,
@@ -341,12 +340,17 @@ object World {
         }
     }
 
-    private suspend fun engineReplyText(persona: Persona, post: Post, myReply: String): String? {
+    private suspend fun engineReplyText(persona: Persona, post: Post, myReply: String?): String? {
         if (!Engine.config.ready) return null
         val prompt = buildString {
             append("Context — your post: \u201C${post.text}\u201D\n")
-            append("${me.name} (@${me.handle}) replied to it: \u201C$myReply\u201D\n")
-            append("Write your reply back. One or two short sentences, plain text only, no quotes.")
+            if (myReply != null) {
+                append("${me.name} (@${me.handle}) replied to it: \u201C$myReply\u201D\n")
+                append("Write your reply back. One or two short sentences, plain text only, no quotes.")
+            } else {
+                append("${me.name} (@${me.handle}) just liked it.\n")
+                append("Write a short follow-up comment on your own post. One or two sentences, plain text only, no quotes.")
+            }
         }
         return Engine.chat(Engine.personaPrompt(persona), listOf("user" to prompt), maxTokens = 140)
     }
@@ -390,7 +394,11 @@ object World {
             delay((12_000L..30_000L).random())
             val history = dms.filter { it.personaId == personaId }.takeLast(12)
                 .map { (if (it.fromMe) "user" else "assistant") to it.text }
-            val text = engineDmReply(persona, history) ?: Voices.dmReply(personaId, Random)
+            val text = engineDmReply(persona, history)
+            if (text == null) {
+                withContext(Dispatchers.Main) { typing[personaId] = false }
+                return@launch
+            }
             deliverDm(personaId, text)
         }
     }
@@ -401,14 +409,18 @@ object World {
         scope.launch {
             delay((14_000L..26_000L).random())
             withContext(Dispatchers.Main) { typing[personaId] = true }
-            val text = engineDmOpen(persona) ?: Voices.dmOpen(personaId, Random)
+            val text = engineDmOpen(persona)
+            if (text == null) {
+                withContext(Dispatchers.Main) { typing[personaId] = false }
+                return@launch
+            }
             deliverDm(personaId, text)
         }
     }
 
     /** Delivers an incoming DM plus its Activity row. Safe from any thread. */
-    private suspend fun deliverDm(personaId: String, text: String) {
-        val now = System.currentTimeMillis()
+    private suspend fun deliverDm(personaId: String, text: String, at: Long = System.currentTimeMillis()) {
+        val now = at
         val persona = Cast.byId(personaId)
         val dm = Dm(
             id = "voice-dm-$now-$personaId",
@@ -456,6 +468,163 @@ object World {
             ),
             maxTokens = 120,
         )
+    }
+
+    // ---- writing, for real -------------------------------------------------
+
+    /** First run: the fifteen wake up and post, one by one, for real. */
+    private fun warmUpWorld() {
+        scope.launch {
+            if (!Engine.config.ready) return@launch
+            val base = System.currentTimeMillis()
+            var minutesAgo = (3..20).random()
+            for (persona in Cast.people.shuffled().take(8)) {
+                delay((1_500L..6_000L).random())
+                val text = writePostText(persona) ?: continue
+                val post = Post(
+                    id = "warm-${base}-${persona.id}",
+                    authorId = persona.id,
+                    text = text,
+                    createdAt = base - minutesAgo * 60_000L,
+                    likes = 0,
+                    replies = 0,
+                )
+                minutesAgo += (9..85).random()
+                persistPost(post)
+                withContext(Dispatchers.Main) { insertPost(post) }
+            }
+        }
+    }
+
+    /** The while-you-were-away items that carry text, written live and staggered. */
+    private fun writeAway(result: Simulation.Result) {
+        result.posts.forEach { intent ->
+            scope.launch {
+                delay((2_000L..16_000L).random())
+                val persona = Cast.byId(intent.personaId)
+                val text = writePostText(persona) ?: return@launch
+                val post = Post(
+                    id = "away-${intent.at}-${persona.id}",
+                    authorId = persona.id,
+                    text = text,
+                    createdAt = intent.at,
+                    likes = 0,
+                    replies = 0,
+                )
+                persistPost(post)
+                withContext(Dispatchers.Main) { insertPost(post) }
+            }
+        }
+
+        result.replies.forEach { intent ->
+            scope.launch {
+                delay((3_000L..20_000L).random())
+                val persona = Cast.byId(intent.personaId)
+                val target = posts.firstOrNull { it.id == intent.postId } ?: return@launch
+                val text = Engine.chat(
+                    Engine.personaPrompt(persona),
+                    listOf(
+                        "user" to "Your friend ${me.name} (@${me.handle}) posted: \u201C${target.text}\u201D\n" +
+                            "Write a short reply to it, in your voice. One or two sentences, plain text only.",
+                    ),
+                    maxTokens = 140,
+                ) ?: return@launch
+                val reply = Reply(
+                    id = "away-r-${intent.at}-${persona.id}",
+                    postId = intent.postId,
+                    authorId = persona.id,
+                    text = text,
+                    createdAt = intent.at,
+                )
+                val item = ActivityItem(
+                    id = reply.id,
+                    personaId = persona.id,
+                    boldPart = persona.name,
+                    rest = " replied: \u201C$text\u201D",
+                    createdAt = intent.at,
+                    kind = ActivityKind.Reply,
+                )
+                persistReply(reply)
+                withContext(Dispatchers.Main) {
+                    replies += reply
+                    bumpReplyCount(intent.postId)
+                    if (openPost != intent.postId) {
+                        persistActivity(item)
+                        activities.add(0, item)
+                    }
+                }
+            }
+        }
+
+        result.mention?.let { intent ->
+            scope.launch {
+                delay((4_000L..24_000L).random())
+                val persona = Cast.byId(intent.personaId)
+                val text = Engine.chat(
+                    Engine.personaPrompt(persona),
+                    listOf(
+                        "user" to "Something in your day made you think of your neighbor ${me.name} (@${me.handle}). " +
+                            "Write a short post mentioning them by @handle. One or two sentences, plain text only.",
+                    ),
+                    maxTokens = 140,
+                ) ?: return@launch
+                val post = Post(
+                    id = "away-m-${intent.at}-${persona.id}",
+                    authorId = persona.id,
+                    text = text,
+                    createdAt = intent.at,
+                    likes = 0,
+                    replies = 0,
+                )
+                val item = ActivityItem(
+                    id = "away-m-a-${intent.at}-${persona.id}",
+                    personaId = persona.id,
+                    boldPart = persona.name,
+                    rest = " mentioned you in a post",
+                    createdAt = intent.at,
+                    kind = ActivityKind.Mention,
+                )
+                persistPost(post)
+                withContext(Dispatchers.Main) {
+                    insertPost(post)
+                    persistActivity(item)
+                    activities.add(0, item)
+                }
+            }
+        }
+
+        result.dms.forEach { intent ->
+            scope.launch {
+                delay((4_000L..22_000L).random())
+                val persona = Cast.byId(intent.personaId)
+                val text = Engine.chat(
+                    Engine.dmPrompt(persona),
+                    listOf(
+                        "user" to "Send ${me.name} a short message about your day — a thought, a question, " +
+                            "something only you would send. One or two lines, plain text only.",
+                    ),
+                    maxTokens = 130,
+                ) ?: return@launch
+                deliverDm(persona.id, text, at = intent.at)
+            }
+        }
+    }
+
+    /** A post written in their voice — the one way post text comes to exist. */
+    private suspend fun writePostText(persona: Persona): String? =
+        Engine.chat(
+            Engine.personaPrompt(persona),
+            listOf(
+                "user" to "Write your latest post for the feed — something small from your day, " +
+                    "in your voice. One or two short sentences, plain text only, no hashtags.",
+            ),
+            maxTokens = 140,
+        )
+
+    /** Keeps the feed newest-first while posts land out of order. */
+    private fun insertPost(post: Post) {
+        val index = posts.indexOfFirst { it.createdAt < post.createdAt }
+        if (index < 0) posts.add(post) else posts.add(index, post)
     }
 
     // ---- seen state + badges -----------------------------------------------
@@ -601,148 +770,3 @@ private fun DmEntity.toModel() = Dm(
     text = text,
     at = at,
 )
-
-/** The world as it looked the moment you arrived. */
-private object Seed {
-
-    /**
-     * [base] is "now". Every seed post gets a real timestamp so time can
-     * move on honestly — come back tomorrow and Sofia's first post says "1d".
-     */
-    fun posts(base: Long, myHandle: String): List<Post> = listOf(
-        seed("p1", "sofia", "everyone say hi to @$myHandle. they're new. be normal.\n— nobody be normal", 3, 27, 6, base),
-        seed(
-            "p2", "sofia",
-            "i know three people who are secretly at the same wedding right now and i'm not there. the FOMO is structural.",
-            22, 14, 3, base,
-        ),
-        seed(
-            "p3", "maya",
-            "my landlord painted the hallway a color he called \"optimistic beige\". i have never felt less optimistic about anything.",
-            48, 31, 8, base,
-        ),
-        seed("p4", "alice", "bought a plant. named it greg. greg is already disappointed in me.", 60, 42, 11, base),
-        seed(
-            "p5", "nina",
-            "3:12am is not late. it's early for a very specific kind of person.",
-            120, 58, 7, base,
-        ),
-        seed("p6", "marcus", "shipped something nobody asked for. feels correct.", 120, 19, 4, base),
-        seed(
-            "p7", "priya",
-            "made dal for the 400th time tonight and it was finally THE dal. i have no idea what i did differently. this is my villain origin story.",
-            180, 36, 12, base,
-        ),
-        seed(
-            "p8", "jordan",
-            "wrote a chorus at 1am. listened to it this morning. it's objectively terrible. keeping it.",
-            240, 24, 5, base,
-        ),
-        seed(
-            "p9", "lena",
-            "today the light did that thing where the whole street looks developed in 1978. stood still for a minute. late to work. worth it.",
-            300, 47, 9, base,
-        ),
-        seed("p10", "theo", "hot take: umbrellas are for people with plans.", 300, 88, 21, base),
-        seed(
-            "p11", "sam",
-            "5:40am. the gym is empty and the city is quiet and for twenty minutes nothing hurts. this is the part nobody posts about.",
-            360, 29, 4, base,
-        ),
-        seed(
-            "p12", "elena",
-            "biscuit learned \"sit\" today. it took three weeks and approximately nine hundred treats. he is very proud. i am very broke.",
-            420, 53, 10, base,
-        ),
-        seed(
-            "p13", "ben",
-            "slowly getting better at switching between chords. my fingertips hurt. i think that's the process?",
-            480, 17, 9, base,
-        ),
-        seed(
-            "p14", "dev",
-            "if you think about it, \"catching up\" is just agreeing to have the same conversation at a slightly different time.",
-            540, 22, 6, base,
-        ),
-        seed(
-            "p15", "rosa",
-            "quiet week. walked the long way home three times. some weeks are for keeping, not sharing. this one, mostly.",
-            660, 61, 5, base,
-        ),
-        seed("p16", "kai", "saw something today. telling no one.", 1440, 204, 33, base),
-    )
-
-    private fun seed(
-        id: String,
-        author: String,
-        text: String,
-        minutesAgo: Int,
-        likes: Int,
-        replies: Int,
-        base: Long,
-    ): Post = Post(
-        id = id,
-        authorId = author,
-        text = text,
-        createdAt = base - minutesAgo * 60_000L,
-        likes = likes,
-        replies = replies,
-    )
-
-    fun activities(base: Long): List<ActivityItem> = listOf(
-        act("a1", "sofia", "Sofia Marchetti", " started following you", 8, ActivityKind.Follow, base),
-        act("a2", "sofia", "Sofia Marchetti", " mentioned you in a post", 10, ActivityKind.Mention, base),
-        act("a3", "marcus", "Marcus Bell", " started following you", 45, ActivityKind.Follow, base),
-        act("a4", "elena", "Elena Ruiz", " started following you", 60, ActivityKind.Follow, base),
-        act("a5", "nina", "Nina Petrova", " started following you", 120, ActivityKind.Follow, base),
-        act("a6", "kai", "Kai Tanaka", " started following you. that basically never happens", 180, ActivityKind.Follow, base),
-        act("a7", "you", "Welcome to Only Human", " — fifteen people just got a new neighbor.", 480, ActivityKind.System, base),
-    )
-
-    private fun act(
-        id: String,
-        persona: String,
-        bold: String,
-        rest: String,
-        minutesAgo: Int,
-        kind: ActivityKind,
-        base: Long,
-    ): ActivityItem = ActivityItem(
-        id = id,
-        personaId = persona,
-        boldPart = bold,
-        rest = rest,
-        createdAt = base - minutesAgo * 60_000L,
-        kind = kind,
-    )
-
-    fun replies(base: Long): List<Reply> = listOf(
-        rep("r1", "p1", "theo", "welcome. the initiation is reading everything we've ever posted. take your time.", 2, base),
-        rep("r2", "p1", "elena", "welcome in! biscuit says hi too (he says hi to everyone, but still).", 1, base),
-        rep("r3", "p4", "maya", "greg will forgive you for a month and then collapse dramatically. succulents are like that.", 50, base),
-        rep("r4", "p4", "priya", "plants are just slow cooking. give greg a window and time.", 42, base),
-        rep("r5", "p7", "alice", "THE dal or 'the dal'? there is a difference and we all know it.", 170, base),
-        rep("r6", "p7", "dev", "the secret ingredient is that you'll never be the same person twice. the dal knows.", 165, base),
-        rep("r7", "p10", "sofia", "he says this every time and every time he walks home damp.", 295, base),
-        rep("r8", "p10", "nina", "umbrellas are for people whose hair forgives them.", 290, base),
-        rep("r9", "p15", "elena", "we'll take the long way tomorrow in your honor. biscuit plans to sniff everything.", 650, base),
-        rep("r10", "p15", "kai", "some weeks are. yes.", 640, base),
-        rep("r11", "p16", "sofia", "kai this is the third one this month. ONE detail. i'm asking nicely.", 1430, base),
-        rep("r12", "p16", "theo", "what did you see.", 1420, base),
-    )
-
-    private fun rep(
-        id: String,
-        post: String,
-        author: String,
-        text: String,
-        minutesAgo: Int,
-        base: Long,
-    ): Reply = Reply(
-        id = id,
-        postId = post,
-        authorId = author,
-        text = text,
-        createdAt = base - minutesAgo * 60_000L,
-    )
-}

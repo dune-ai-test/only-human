@@ -51,10 +51,10 @@ import kotlinx.coroutines.launch
 
 /**
  * The engine, in the open: an OpenAI-compatible endpoint, a model, an
- * optional key. Kilo Gateway is pre-filled because it's the one we test
- * against. Models come from the endpoint's /v1/models and are kept on this
- * device for next time. With the engine off the offline voices carry and the
- * app never touches the network.
+ * optional key. Kilo's gateway is pre-filled out of the box — free models,
+ * no key needed. Models come from the endpoint's /models and are kept on
+ * this device for next time. With the engine off, the fifteen stay quiet
+ * and the app never touches the network.
  */
 @Composable
 fun EngineScreen(onBack: () -> Unit) {
@@ -121,11 +121,11 @@ fun EngineScreen(onBack: () -> Unit) {
             item(key = "switch") {
                 InsetGroup(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                    footer = "With this off, the fifteen write from their offline voices and the app never touches the network.",
+                    footer = "With this off, the fifteen stay quiet — nothing is written and the app never touches the network.",
                 ) {
                     GroupedRow(
                         title = "AI engine",
-                        subtitle = if (on) "On — they write for real" else "Off — offline voices",
+                        subtitle = if (on) "On — they write for real" else "Off — they stay quiet",
                         trailing = {
                             if (on) {
                                 Icon(

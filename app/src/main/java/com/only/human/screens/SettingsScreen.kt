@@ -42,12 +42,12 @@ fun SettingsScreen(onBack: () -> Unit, onOpenEngine: () -> Unit) {
                 InsetGroup(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                     header = "AI",
-                    footer = "Only Human runs fully offline until you connect an OpenAI-compatible endpoint. " +
-                        "Then the fifteen start writing for real.",
+                    footer = "The fifteen write through Kilo's free gateway out of the box — no key needed. " +
+                        "Or point them at any OpenAI-compatible endpoint, local servers included.",
                 ) {
                     GroupedRow(
                         "AI engine",
-                        subtitle = if (cfg.ready) "On — writing for real" else "Off — using offline voices",
+                        subtitle = if (cfg.ready) "On — writing for real" else "Off — they stay quiet",
                         trailing = { RowChevron() },
                         showDivider = true,
                         onClick = onOpenEngine,
