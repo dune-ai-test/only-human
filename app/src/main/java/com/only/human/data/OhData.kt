@@ -83,6 +83,16 @@ data class PersonaEntity(
     val createdAt: Long,
 )
 
+/** A story — the ephemeral, right-now line, good for a day. */
+@Entity(tableName = "stories")
+data class StoryEntity(
+    @PrimaryKey val id: String,
+    val personaId: String,
+    val text: String,
+    val createdAt: Long,
+    val seen: Boolean,
+)
+
 @Dao
 interface OhDao {
 
@@ -136,11 +146,20 @@ interface OhDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPersona(persona: PersonaEntity)
+
+    @Query("SELECT * FROM stories ORDER BY createdAt DESC")
+    suspend fun stories(): List<StoryEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertStory(story: StoryEntity)
+
+    @Query("UPDATE stories SET seen = 1 WHERE id = :id")
+    suspend fun markStorySeen(id: String)
 }
 
 @Database(
-    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class, ReplyEntity::class, DmEntity::class, PersonaEntity::class],
-    version = 5,
+    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class, ReplyEntity::class, DmEntity::class, PersonaEntity::class, StoryEntity::class],
+    version = 6,
     exportSchema = false,
 )
 abstract class OhDatabase : RoomDatabase() {
@@ -215,11 +234,25 @@ abstract class OhDatabase : RoomDatabase() {
             }
         }
 
+        /** v6: stories — the ephemeral, right-now text they post for a day. */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS stories (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "personaId TEXT NOT NULL, " +
+                        "text TEXT NOT NULL, " +
+                        "createdAt INTEGER NOT NULL, " +
+                        "seen INTEGER NOT NULL)",
+                )
+            }
+        }
+
         fun get(context: Context): OhDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room
                     .databaseBuilder(context.applicationContext, OhDatabase::class.java, "only-human.db")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     // Nightlies may change the schema freely; pre-1.0 nothing on disk is precious.
                     .fallbackToDestructiveMigration()
                     .build()

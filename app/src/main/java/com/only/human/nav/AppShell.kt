@@ -43,6 +43,8 @@ import com.only.human.screens.NotificationsScreen
 import com.only.human.screens.PostPage
 import com.only.human.screens.ProfileScreen
 import com.only.human.screens.SettingsScreen
+import com.only.human.screens.StoryViewer
+import com.only.human.screens.TagScreen
 import com.only.human.screens.YouScreen
 import com.only.human.world.World
 
@@ -56,6 +58,8 @@ sealed interface Route {
     data object Settings : Route
     data object Engine : Route
     data object CreatePersona : Route
+    data class Tag(val tag: String) : Route
+    data class Stories(val startId: String) : Route
 }
 
 /** Route + stack depth — depth drives push/pop animation direction. */
@@ -131,8 +135,12 @@ fun AppShell() {
                         0 -> FeedScreen(
                             onOpenProfile = { nav.push(Route.Person(it)) },
                             onOpenPost = { nav.push(Route.Post(it)) },
+                            onOpenStory = { nav.push(Route.Stories(it)) },
                         )
-                        1 -> DiscoverScreen(onOpenProfile = { nav.push(Route.Person(it)) })
+                        1 -> DiscoverScreen(
+                            onOpenProfile = { nav.push(Route.Person(it)) },
+                            onOpenTag = { nav.push(Route.Tag(it)) },
+                        )
                         3 -> NotificationsScreen(
                             onOpenProfile = { nav.push(Route.Person(it)) },
                             onOpenMessages = { nav.push(Route.Messages) },
@@ -176,6 +184,16 @@ fun AppShell() {
                             nav.pop()
                             nav.push(Route.Person(id))
                         },
+                    )
+                    is Route.Tag -> TagScreen(
+                        tag = route.tag,
+                        onBack = { nav.pop() },
+                        onOpenProfile = { nav.push(Route.Person(it)) },
+                        onOpenPost = { nav.push(Route.Post(it)) },
+                    )
+                    is Route.Stories -> StoryViewer(
+                        startId = route.startId,
+                        onClose = { nav.pop() },
                     )
                 }
             }

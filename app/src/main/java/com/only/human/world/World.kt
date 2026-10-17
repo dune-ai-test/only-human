@@ -17,6 +17,7 @@ import com.only.human.data.OhDatabase
 import com.only.human.data.PersonaEntity
 import com.only.human.data.PostEntity
 import com.only.human.data.ReplyEntity
+import com.only.human.data.StoryEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,6 +41,25 @@ object World {
     val activities = mutableStateListOf<ActivityItem>()
     val replies = mutableStateListOf<Reply>()
     val dms = mutableStateListOf<Dm>()
+
+    /** Stories — everyone's right-now lines. Each one lives for a day. */
+    val stories = mutableStateListOf<Story>()
+
+    /** The ones still alive — under a day old — unseen first, then newest. */
+    fun freshStories(): List<Story> {
+        val now = System.currentTimeMillis()
+        return stories
+            .filter { now - it.createdAt < 24 * 60 * 60 * 1000L }
+            .sortedWith(compareBy({ it.seen }, { -it.createdAt }))
+    }
+
+    /** Marked the moment it's watched — stays seen for its whole life. */
+    fun markStorySeen(id: String) {
+        val index = stories.indexOfFirst { it.id == id }
+        if (index < 0 || stories[index].seen) return
+        stories[index] = stories[index].copy(seen = true)
+        scope.launch { database?.dao()?.markStorySeen(id) }
+    }
 
     /** personaId -> you follow them. */
     val following = mutableStateMapOf<String, Boolean>()
@@ -171,6 +191,7 @@ object World {
             val storedActivities = dao.activities().map { it.toModel() }
             val storedReplies = dao.replies().map { it.toModel() }
             val storedDms = dao.dms().map { it.toModel() }
+            val storedStories = dao.stories().map { it.toModel() }
             val storedFollows = dao.follows()
             withContext(Dispatchers.Main) {
                 // If onboarding completed while this boot was still running,
@@ -185,12 +206,17 @@ object World {
                 }
                 dms.clear()
                 dms.addAll(storedDms)
+                if (storedStories.isNotEmpty()) {
+                    stories.clear()
+                    stories.addAll(storedStories)
+                }
                 storedFollows.forEach {
                     following[it.personaId] = it.following
                     followedBy[it.personaId] = it.followsYou
                 }
             }
             prefs?.edit()?.putLong(KEY_LAST_VISIT, System.currentTimeMillis())?.apply()
+            refreshStories()
         }
     }
 
@@ -239,6 +265,7 @@ object World {
         // you move in. And the rest of the neighborhood is waking up.
         welcomeDm("sofia")
         warmUpWorld()
+        refreshStories()
     }
 
     /**
@@ -606,6 +633,49 @@ object World {
         }
     }
 
+    /** A story written in their voice — what they're doing right now. */
+    private suspend fun writeStoryText(persona: Persona): String? =
+        Engine.chat(
+            Engine.personaPrompt(persona),
+            listOf(
+                "user" to "Write your story for the next 24 hours — the one thing you're doing or " +
+                    "noticing right now, this minute. One or two very short lines, present tense, " +
+                    "plain text only, no hashtags.",
+            ),
+            maxTokens = 100,
+        )
+
+    /**
+     * Keeps stories alive the way they'd actually be: a few of the cast have
+     * something current, written live at boot, each good for a day. No write,
+     * no story — a failed engine call means that persona is simply quiet.
+     */
+    private fun refreshStories() {
+        if (!onboarded || !Engine.config.ready) return
+        scope.launch {
+            val dao = database?.dao() ?: return@launch
+            val now = System.currentTimeMillis()
+            val fresh = stories
+                .filter { now - it.createdAt < 24 * 60 * 60 * 1000L }
+                .map { it.personaId }
+                .toSet()
+            val candidates = Cast.all.filter { it.id !in fresh }.shuffled().take(4)
+            for (persona in candidates) {
+                delay((7_000L..18_000L).random())
+                val text = writeStoryText(persona) ?: continue
+                val story = Story(
+                    id = "story-${System.currentTimeMillis()}-${persona.id}",
+                    personaId = persona.id,
+                    text = text,
+                    createdAt = System.currentTimeMillis(),
+                    seen = false,
+                )
+                dao.upsertStory(story.toEntity())
+                withContext(Dispatchers.Main) { stories.add(0, story) }
+            }
+        }
+    }
+
     /** The while-you-were-away items that carry text, written live and staggered. */
     private fun writeAway(result: Simulation.Result) {
         result.posts.forEach { intent ->
@@ -906,6 +976,22 @@ private fun PersonaEntity.toModel() = Persona(
     gradient = decodeGradient(gradient),
     joinedYear = joinedYear,
     followerBoost = followerBoost,
+)
+
+private fun Story.toEntity() = StoryEntity(
+    id = id,
+    personaId = personaId,
+    text = text,
+    createdAt = createdAt,
+    seen = seen,
+)
+
+private fun StoryEntity.toModel() = Story(
+    id = id,
+    personaId = personaId,
+    text = text,
+    createdAt = createdAt,
+    seen = seen,
 )
 
 /** Two ARGB ints, comma-separated — how gradients survive Room. */

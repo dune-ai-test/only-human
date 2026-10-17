@@ -1,6 +1,7 @@
 package com.only.human.screens
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,8 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +28,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,11 +48,16 @@ import com.only.human.design.rememberTick
 import com.only.human.design.type
 import com.only.human.world.Cast
 import com.only.human.world.Post
+import com.only.human.world.Story
 import com.only.human.world.World
 import kotlinx.coroutines.delay
 
 @Composable
-fun FeedScreen(onOpenProfile: (String) -> Unit, onOpenPost: (String) -> Unit) {
+fun FeedScreen(
+    onOpenProfile: (String) -> Unit,
+    onOpenPost: (String) -> Unit,
+    onOpenStory: (String) -> Unit,
+) {
     val listState = rememberLazyListState()
     val offset = rememberCollapseOffset(listState)
 
@@ -60,6 +71,10 @@ fun FeedScreen(onOpenProfile: (String) -> Unit, onOpenPost: (String) -> Unit) {
             ),
         ) {
             item(key = "header") { LargeTitleHeader("Feed") }
+            val fresh = World.freshStories()
+            if (fresh.isNotEmpty()) {
+                item(key = "stories") { StoriesRow(stories = fresh, onOpenStory = onOpenStory) }
+            }
             if (World.posts.isEmpty()) {
                 item(key = "empty-feed") {
                     Text(
@@ -73,6 +88,51 @@ fun FeedScreen(onOpenProfile: (String) -> Unit, onOpenPost: (String) -> Unit) {
             items(World.posts, key = { it.id }) { post ->
                 PostRow(post = post, onOpenProfile = onOpenProfile, onOpenPost = onOpenPost)
                 Hairline(startInset = 68.dp)
+            }
+        }
+    }
+}
+
+/** The row of story rings — each one good for a day, seen ones grayed out. */
+@Composable
+private fun StoriesRow(stories: List<Story>, onOpenStory: (String) -> Unit) {
+    val c = colors
+    val t = type
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        items(stories, key = { it.id }) { story ->
+            val persona = Cast.byId(story.personaId)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.iosClickable(scaleTo = 0.94f, onClick = { onOpenStory(persona.id) }),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier
+                            .size(62.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (story.seen) SolidColor(c.separatorOpaque)
+                                else Brush.linearGradient(persona.gradient),
+                            ),
+                    )
+                    Box(
+                        Modifier
+                            .size(54.dp)
+                            .clip(CircleShape)
+                            .background(c.grouped),
+                    )
+                    MonogramAvatar(persona.gradient, persona.initials, 48.dp)
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    persona.name.substringBefore(" "),
+                    style = t.caption2,
+                    color = if (story.seen) c.labelSecondary else c.label,
+                    maxLines = 1,
+                )
             }
         }
     }

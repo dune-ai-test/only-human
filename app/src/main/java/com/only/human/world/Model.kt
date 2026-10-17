@@ -107,3 +107,13 @@ data class DmThread(
     val last: Dm,
     val unread: Int,
 )
+
+/** A story — a moment from right now, gone after a day. */
+data class Story(
+    val id: String,
+    val personaId: String,
+    val text: String,
+    /** Epoch millis. */
+    val createdAt: Long,
+    val seen: Boolean,
+)

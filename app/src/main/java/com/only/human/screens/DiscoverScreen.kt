@@ -39,10 +39,11 @@ import com.only.human.design.iosClickable
 import com.only.human.design.type
 import com.only.human.world.Cast
 import com.only.human.world.Persona
+import com.only.human.world.Trends
 import com.only.human.world.World
 
 @Composable
-fun DiscoverScreen(onOpenProfile: (String) -> Unit) {
+fun DiscoverScreen(onOpenProfile: (String) -> Unit, onOpenTag: (String) -> Unit) {
     val listState = rememberLazyListState()
     val offset = rememberCollapseOffset(listState)
     var query by rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
@@ -101,8 +102,8 @@ fun DiscoverScreen(onOpenProfile: (String) -> Unit) {
                     }
                 }
             } else {
-                items(trending, key = { it.tag }) { trend ->
-                    TrendingRow(tag = trend.tag, posts = trend.posts)
+                items(trending, key = { it }) { tag ->
+                    TrendingRow(tag = tag, posts = Trends.label(tag), onClick = { onOpenTag(tag) })
                     Hairline(startInset = 16.dp)
                 }
             }
@@ -138,23 +139,22 @@ private fun PersonRow(persona: Persona, onOpenProfile: (String) -> Unit) {
     }
 }
 
-private data class Trend(val tag: String, val posts: String)
-
 private val trending = listOf(
-    Trend("#nightshift", "412 posts"),
-    Trend("#morningpeople", "88 posts"),
-    Trend("#quietweeks", "64 posts"),
-    Trend("#homemadedal", "51 posts"),
-    Trend("#nowrongchords", "37 posts"),
+    "#nightshift",
+    "#morningpeople",
+    "#quietweeks",
+    "#homemadedal",
+    "#nowrongchords",
 )
 
 @Composable
-private fun TrendingRow(tag: String, posts: String) {
+private fun TrendingRow(tag: String, posts: String, onClick: () -> Unit) {
     val c = colors
     val t = type
     Row(
         Modifier
             .fillMaxWidth()
+            .iosClickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
