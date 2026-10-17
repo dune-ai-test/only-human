@@ -643,7 +643,21 @@ object World {
                     "plain text only, no hashtags.",
             ),
             maxTokens = 100,
-        )
+        )?.let { trimStory(it) }
+
+    /**
+     * Stories live on one screen: keep the first couple of sentences, ending
+     * on a real break — never mid-word, never clipped.
+     */
+    private fun trimStory(raw: String): String {
+        val text = raw.trim()
+        if (text.length <= 220) return text
+        val head = text.take(220)
+        val end = head.lastIndexOfAny(charArrayOf('.', '!', '?'))
+        if (end >= 60) return head.take(end + 1)
+        val space = head.lastIndexOf(' ')
+        return if (space > 0) head.take(space).trimEnd(',', ';', ':') else head
+    }
 
     /**
      * Keeps stories alive the way they'd actually be: a few of the cast have

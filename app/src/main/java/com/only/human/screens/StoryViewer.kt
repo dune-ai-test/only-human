@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.only.human.design.components.MonogramAvatar
 import com.only.human.design.components.OhIcons
@@ -157,6 +158,8 @@ fun StoryViewer(startId: String, onClose: () -> Unit) {
                 story.text,
                 style = t.title2.copy(fontWeight = FontWeight.SemiBold),
                 color = Color.White,
+                maxLines = 8,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(120.dp))
         }
