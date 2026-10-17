@@ -283,7 +283,7 @@ private fun CompactValueField(
 
 /** The full-screen model browser: fetch, search, tap to choose. */
 @Composable
-private fun ModelPickerScreen(
+internal fun ModelPickerScreen(
     endpoint: String,
     apiKey: String,
     models: List<String>,
@@ -291,6 +291,9 @@ private fun ModelPickerScreen(
     onFetched: (List<String>) -> Unit,
     onPick: (String) -> Unit,
     onBack: () -> Unit,
+    title: String = "Models",
+    note: String? = null,
+    defaultTitle: String? = null,
 ) {
     val listState = rememberLazyListState()
     val offset = rememberCollapseOffset(listState)
@@ -327,7 +330,7 @@ private fun ModelPickerScreen(
     }
 
     LargeTitleScaffold(
-        title = "Models",
+        title = title,
         offsetProvider = offset,
         leading = { IOSBackButton(onBack) },
         actions = {
@@ -342,7 +345,18 @@ private fun ModelPickerScreen(
                 bottom = padding.calculateBottomPadding() + 12.dp,
             ),
         ) {
-            item(key = "title") { LargeTitleHeader("Models") }
+            item(key = "title") { LargeTitleHeader(title) }
+
+            if (note != null) {
+                item(key = "note") {
+                    Text(
+                        note,
+                        style = t.footnote,
+                        color = c.labelSecondary,
+                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 4.dp),
+                    )
+                }
+            }
 
             item(key = "search") {
                 InsetGroup(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
@@ -357,6 +371,19 @@ private fun ModelPickerScreen(
                             textStyle = t.body.copy(color = c.label),
                             cursorBrush = SolidColor(c.accent),
                             modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+
+            if (defaultTitle != null) {
+                item(key = "default") {
+                    InsetGroup(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                        ModelPickRow(
+                            id = defaultTitle,
+                            selected = selected.isBlank(),
+                            showDivider = false,
+                            onClick = { onPick("") },
                         )
                     }
                 }

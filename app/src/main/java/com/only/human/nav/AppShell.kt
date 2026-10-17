@@ -46,6 +46,7 @@ import com.only.human.screens.EngineScreen
 import com.only.human.screens.FeedScreen
 import com.only.human.screens.MessagesScreen
 import com.only.human.screens.NotificationsScreen
+import com.only.human.screens.PersonModelScreen
 import com.only.human.screens.PostPage
 import com.only.human.screens.ProfileScreen
 import com.only.human.screens.SettingsScreen
@@ -58,6 +59,7 @@ import com.only.human.world.World
 sealed interface Route {
     data class Home(val tab: Int) : Route
     data class Person(val id: String) : Route
+    data class PersonModel(val id: String) : Route
     data class Post(val id: String) : Route
     data class Dm(val id: String) : Route
     data object Messages : Route
@@ -191,6 +193,11 @@ fun AppShell() {
                         onBack = { nav.pop() },
                         onOpenPost = { nav.push(Route.Post(it)) },
                         onOpenDm = { nav.push(Route.Dm(it)) },
+                        onOpenModel = { nav.push(Route.PersonModel(it)) },
+                    )
+                    is Route.PersonModel -> PersonModelScreen(
+                        personaId = route.id,
+                        onBack = { nav.pop() },
                     )
                     is Route.Post -> PostPage(
                         postId = route.id,

@@ -20,16 +20,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.only.human.design.colors
+import com.only.human.design.components.GroupedRow
 import com.only.human.design.components.Hairline
+import com.only.human.design.components.InsetGroup
 import com.only.human.design.components.IOSBackButton
 import com.only.human.design.components.IOSFilledButton
 import com.only.human.design.components.IOSFollowButton
 import com.only.human.design.components.LargeTitleHeader
 import com.only.human.design.components.LargeTitleScaffold
 import com.only.human.design.components.MonogramAvatar
+import com.only.human.design.components.RowChevron
 import com.only.human.design.components.rememberCollapseOffset
 import com.only.human.design.type
 import com.only.human.world.Cast
+import com.only.human.world.Engine
 import com.only.human.world.Persona
 import com.only.human.world.World
 
@@ -40,6 +44,7 @@ fun ProfileScreen(
     onBack: () -> Unit,
     onOpenPost: (String) -> Unit,
     onOpenDm: (String) -> Unit,
+    onOpenModel: (String) -> Unit,
 ) {
     val persona = Cast.byId(personaId)
     val listState = rememberLazyListState()
@@ -61,6 +66,19 @@ fun ProfileScreen(
         ) {
             item(key = "title") { LargeTitleHeader(persona.name) }
             item(key = "card") { ProfileCard(persona, onOpenDm) }
+            if (persona.id != "you") {
+                item(key = "model") {
+                    InsetGroup(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        GroupedRow(
+                            title = "AI model",
+                            subtitle = World.personaModel(persona.id)
+                                ?: "Engine default (${Engine.config.model})",
+                            trailing = { RowChevron() },
+                            onClick = { onOpenModel(persona.id) },
+                        )
+                    }
+                }
+            }
             item(key = "posts-label") {
                 Text(
                     "Posts",

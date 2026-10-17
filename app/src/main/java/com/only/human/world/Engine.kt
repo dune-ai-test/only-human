@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -50,6 +52,16 @@ object Engine {
 
     private var prefs: SharedPreferences? = null
 
+    /**
+     * One write at a time, a few seconds apart. The free gateway throttles
+     * bursts, and every feature here (posts, comments, stories, catch-up,
+     * DMs) shares one key — so calls take turns politely instead of
+     * colliding. Waiting writers queue fairly.
+     */
+    private val chatGate = Mutex()
+    private var lastWriteAt = 0L
+    private const val WRITE_GAP_MS = 4_000L
+
     fun load(prefs: SharedPreferences) {
         this.prefs = prefs
         config = Config(
@@ -85,15 +97,36 @@ object Engine {
         temperature: Double = 0.9,
         requireEnabled: Boolean = true,
         retries: Int = 2,
+        model: String? = null,
+    ): String? {
+        return chatGate.withLock {
+            val wait = lastWriteAt + WRITE_GAP_MS - System.currentTimeMillis()
+            if (wait > 0) delay(wait)
+            try {
+                chatOnce(system, history, maxTokens, temperature, requireEnabled, retries, model)
+            } finally {
+                lastWriteAt = System.currentTimeMillis()
+            }
+        }
+    }
+
+    private suspend fun chatOnce(
+        system: String,
+        history: List<Pair<String, String>>,
+        maxTokens: Int,
+        temperature: Double,
+        requireEnabled: Boolean,
+        retries: Int,
+        model: String?,
     ): String? = withContext(Dispatchers.IO) {
         val cfg = config
         if (requireEnabled && !cfg.ready) return@withContext null
-        if (cfg.endpoint.isBlank() || cfg.model.isBlank()) {
+        if (cfg.endpoint.isBlank() || (cfg.model.isBlank() && model.isNullOrBlank())) {
             lastError = "Engine not configured"
             return@withContext null
         }
         val body = JSONObject().apply {
-            put("model", cfg.model)
+            put("model", model?.takeIf { it.isNotBlank() } ?: cfg.model)
             put(
                 "messages",
                 JSONArray().apply {

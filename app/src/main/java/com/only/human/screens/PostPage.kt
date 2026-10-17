@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +34,7 @@ import com.only.human.design.colors
 import com.only.human.design.components.ActionCount
 import com.only.human.design.components.Hairline
 import com.only.human.design.components.IOSBackButton
+import com.only.human.design.components.IOSFilledButton
 import com.only.human.design.components.LargeTitleScaffold
 import com.only.human.design.components.LocalTabBarInset
 import com.only.human.design.components.MonogramAvatar
@@ -41,6 +43,7 @@ import com.only.human.design.components.rememberCollapseOffset
 import com.only.human.design.iosClickable
 import com.only.human.design.type
 import com.only.human.world.Cast
+import com.only.human.world.CommentIntent
 import com.only.human.world.Post
 import com.only.human.world.Reply
 import com.only.human.world.World
@@ -60,6 +63,7 @@ fun PostPage(postId: String, onBack: () -> Unit, onOpenProfile: (String) -> Unit
     val listState = rememberLazyListState()
     val offset = rememberCollapseOffset(listState)
     val replies = World.repliesFor(postId)
+    val intents = World.commentIntents.filter { it.postId == postId }
     var replyOpen by remember { mutableStateOf(false) }
     val tabInset = LocalTabBarInset.current
 
@@ -84,6 +88,9 @@ fun PostPage(postId: String, onBack: () -> Unit, onOpenProfile: (String) -> Unit
                 ),
             ) {
                 item(key = "post") { PostHeader(post, onOpenProfile) }
+                items(intents, key = { it.id }) { intent ->
+                    CommentIntentRow(intent)
+                }
                 if (replies.isEmpty() && post.replies == 0) {
                     item(key = "empty") {
                         Text(
@@ -164,6 +171,56 @@ private fun PostHeader(post: Post, onOpenProfile: (String) -> Unit) {
         }
     }
     Hairline()
+}
+
+/** Someone asking to comment on your post — you post it, or they move on. */
+@Composable
+private fun CommentIntentRow(intent: CommentIntent) {
+    val c = colors
+    val t = type
+    val persona = Cast.byId(intent.personaId)
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(c.card)
+            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MonogramAvatar(persona.gradient, persona.initials, 32.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                when {
+                    intent.writing -> "${persona.name} is writing a comment…"
+                    intent.failed -> "${persona.name} couldn't write it"
+                    else -> "${persona.name} wants to comment"
+                },
+                style = t.subheadline,
+                color = if (intent.failed) c.red else c.label,
+                maxLines = 2,
+            )
+        }
+        if (!intent.writing) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Skip",
+                style = t.subheadline.copy(fontWeight = FontWeight.SemiBold),
+                color = c.labelSecondary,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .iosClickable(scaleTo = 0.95f, onClick = { World.skipComment(intent.id) })
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            IOSFilledButton(
+                text = if (intent.failed) "Try again" else "Post it",
+                onClick = { World.postComment(intent.id) },
+                compact = true,
+            )
+        }
+    }
+    Hairline(startInset = 60.dp)
 }
 
 @Composable

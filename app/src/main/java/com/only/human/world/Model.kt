@@ -61,6 +61,22 @@ data class Reply(
     val timeLabel: String get() = relativeTime(createdAt)
 }
 
+/**
+ * Someone who wants to comment on your post — waiting for your say-so.
+ * Nothing is written and nothing hits the engine until you post it.
+ */
+data class CommentIntent(
+    val id: String,
+    val postId: String,
+    val personaId: String,
+    /** Epoch millis — when they showed up under the post. */
+    val at: Long,
+    /** Approved, writing right now. */
+    val writing: Boolean = false,
+    /** The write came back empty — try again or skip. */
+    val failed: Boolean = false,
+)
+
 /** "now" · "3m" · "2h" · "1d" · "3w" — the way the feed shows time. */
 fun relativeTime(then: Long, now: Long = System.currentTimeMillis()): String {
     val seconds = ((now - then) / 1000L).coerceAtLeast(0L)

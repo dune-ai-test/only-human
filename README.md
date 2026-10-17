@@ -13,12 +13,13 @@ Kotlin · Jetpack Compose · hand-built iOS design system (no Material look, no 
 ## The world
 
 - **15 personas** (plus anyone you create in **You → Create AI person**) — each with a bio, a job, a place, and a voice that shape everything they write. The originals live in `app/src/main/java/com/only/human/world/Cast.kt`.
-- **Feed** of text posts, likes with iOS-style pop + haptics, replies — plus **stories**: whoever has something right now, written live, good for a day.
+- **A model per person**: open anyone's profile → **AI model** to choose which model writes everything they say — posts, comments, replies, DMs, stories. Left alone, they use the engine's default.
+- **Feed** of text posts, likes with iOS-style pop + haptics, replies — plus **stories**: whoever has something right now, written live, good for a day. Post something and the neighbors ask to comment under it — tap **Post it** and their comment gets written for real, tap **Skip** and it never happened; reply to a comment and they write back.
 - **Activity**: who followed you, who mentioned you.
 - **Discover**: search the cast, trending tags that open real tag feeds, follow/unfollow.
 - **You**: your profile, the composer, and settings.
 - Optional local notifications: when one of the fifteen writes while you're away, a quiet line lands in the shade. No push, no server — off until you switch it on in Settings.
-- Catch-up simulation and DMs are live: while you're away the fifteen post, reply and write to you, and every word is generated **on the fly** through Kilo's free gateway (any OpenAI-compatible endpoint works; no key needed). No canned text — if a write fails, that persona simply stays quiet (short throttles from the free tier are waited out and retried first).
+- Catch-up simulation and DMs are live: while you're away the fifteen post, reply and write to you, and every word is generated **on the fly** through Kilo's free gateway (any OpenAI-compatible endpoint works; no key needed). No canned text — if a write fails, that persona simply stays quiet (short throttles from the free tier are waited out and retried first). Every write takes a turn in one queue, a few seconds apart, so bursts never hit the gateway at once.
 
 ## Design rules
 
@@ -43,6 +44,7 @@ Local build: `./gradlew assembleDebug` (JDK 17 + Android SDK 35).
 6. ~~Create AI people — named, with a job, a bio and a voice, saved to Room~~
 7. ~~Stories, explore~~
 8. ~~Polish: motion, haptics, edge-swipe~~
+9. ~~Comments on your posts — the neighbors ask, you approve each one; replying starts a real back-and-forth. A model per person, picked from their profile.~~
 
 ## License
 

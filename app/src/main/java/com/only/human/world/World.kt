@@ -24,6 +24,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.random.Random
 
 /**
@@ -42,6 +44,9 @@ object World {
     val replies = mutableStateListOf<Reply>()
     val dms = mutableStateListOf<Dm>()
 
+    /** People waiting under your posts for a yes — nothing written yet. */
+    val commentIntents = mutableStateListOf<CommentIntent>()
+
     /** Stories — everyone's right-now lines. Each one lives for a day. */
     val stories = mutableStateListOf<Story>()
 
@@ -59,6 +64,20 @@ object World {
         if (index < 0 || stories[index].seen) return
         stories[index] = stories[index].copy(seen = true)
         scope.launch { database?.dao()?.markStorySeen(id) }
+    }
+
+    /** personaId -> the model they write through. Missing means the engine default. */
+    val personaModels = mutableStateMapOf<String, String>()
+
+    fun personaModel(personaId: String): String? = personaModels[personaId]
+
+    /** Pick the model one person writes through — null or blank is the default. */
+    fun setPersonaModel(personaId: String, model: String?) {
+        val clean = model?.trim().orEmpty()
+        if (clean.isEmpty()) personaModels.remove(personaId) else personaModels[personaId] = clean
+        val json = JSONObject()
+        personaModels.forEach { (id, m) -> json.put(id, m) }
+        prefs?.edit()?.putString(KEY_PERSONA_MODELS, json.toString())?.apply()
     }
 
     /** personaId -> you follow them. */
@@ -121,6 +140,8 @@ object World {
     private const val KEY_ME_AVATAR = "meAvatar"
     private const val KEY_ACTIVITY_SEEN = "activitySeenAt"
     private const val KEY_NOTIFY = "notifyMe"
+    private const val KEY_PERSONA_MODELS = "personaModels"
+    private const val KEY_COMMENT_INTENTS = "commentIntents"
 
     init {
         Cast.people.forEach {
@@ -148,6 +169,30 @@ object World {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs = p
         Engine.load(p)
+        p.getString(KEY_PERSONA_MODELS, null)?.let { raw ->
+            try {
+                val json = JSONObject(raw)
+                json.keys().forEach { id -> personaModels[id] = json.getString(id) }
+            } catch (_: Exception) {
+                // A leftover blob from another life: everyone writes default.
+            }
+        }
+        p.getString(KEY_COMMENT_INTENTS, null)?.let { raw ->
+            try {
+                val arr = JSONArray(raw)
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    commentIntents += CommentIntent(
+                        id = o.getString("id"),
+                        postId = o.getString("postId"),
+                        personaId = o.getString("personaId"),
+                        at = o.getLong("at"),
+                    )
+                }
+            } catch (_: Exception) {
+                // Unreadable queue — nobody was waiting.
+            }
+        }
 
         val storedMe = Me(
             name = p.getString(KEY_ME_NAME, "") ?: "",
@@ -402,6 +447,7 @@ object World {
         )
         posts.add(0, post)
         persistPost(post)
+        if (authorId == "you") scheduleComments(post)
     }
 
     // ---- replies ---------------------------------------------------------
@@ -421,6 +467,7 @@ object World {
         bumpReplyCount(postId)
         persistReply(reply)
         schedulePersonaReply(postId)
+        scheduleCommenterReply(postId)
     }
 
     private fun bumpReplyCount(postId: String) {
@@ -488,10 +535,182 @@ object World {
                 append("Write a short follow-up comment on your own post. One or two sentences, plain text only, no quotes.")
             }
         }
-        return Engine.chat(Engine.personaPrompt(persona), listOf("user" to prompt), maxTokens = 140)
+        return Engine.chat(
+            Engine.personaPrompt(persona),
+            listOf("user" to prompt),
+            maxTokens = 140,
+            model = personaModel(persona.id),
+        )
     }
 
     // ---- direct messages ---------------------------------------------------
+
+    /**
+     * Your post doesn't land in a void: over the next minutes the neighbors
+     * wander by and ask to comment. Nothing is written yet — each one waits
+     * under the post for your say-so, and only then does the engine run.
+     */
+    private fun scheduleComments(post: Post) {
+        if (!Engine.config.ready) return
+        val followers = Cast.all.filter { it.id != "you" && followedBy[it.id] == true }.shuffled()
+        val others = Cast.all.filter { it.id != "you" && followedBy[it.id] != true }.shuffled()
+        val commenters = (followers.take(3) + others.take(1)).distinct()
+        if (commenters.isEmpty()) return
+        scope.launch {
+            for (persona in commenters) {
+                delay((10_000L..30_000L).random())
+                withContext(Dispatchers.Main) {
+                    commentIntents += CommentIntent(
+                        id = "ask-${post.id}-${persona.id}",
+                        postId = post.id,
+                        personaId = persona.id,
+                        at = System.currentTimeMillis(),
+                    )
+                    persistCommentIntents()
+                }
+            }
+        }
+    }
+
+    /** You said yes — now they write it, for real, through the queue. */
+    fun postComment(intentId: String) {
+        val intent = commentIntents.firstOrNull { it.id == intentId } ?: return
+        if (intent.writing) return
+        setIntentState(intentId, writing = true, failed = false)
+        scope.launch {
+            val post = posts.firstOrNull { it.id == intent.postId }
+            val persona = Cast.byId(intent.personaId)
+            val text = if (post != null) engineCommentText(persona, post) else null
+            if (text == null) {
+                withContext(Dispatchers.Main) { setIntentState(intentId, writing = false, failed = true) }
+                return@launch
+            }
+            val reply = Reply(
+                id = "voice-c-${System.currentTimeMillis()}-${persona.id}",
+                postId = intent.postId,
+                authorId = persona.id,
+                text = text,
+                createdAt = System.currentTimeMillis(),
+            )
+            val item = ActivityItem(
+                id = reply.id,
+                personaId = persona.id,
+                boldPart = persona.name,
+                rest = " commented: \u201C${reply.text}\u201D",
+                createdAt = reply.createdAt,
+                kind = ActivityKind.Reply,
+            )
+            persistReply(reply)
+            withContext(Dispatchers.Main) {
+                replies += reply
+                bumpReplyCount(intent.postId)
+                if (openPost != intent.postId) {
+                    persistActivity(item)
+                    activities.add(0, item)
+                }
+                commentIntents.removeAll { it.id == intentId }
+                persistCommentIntents()
+            }
+            tell(persona.name, text, "reply-${persona.id}")
+        }
+    }
+
+    /** Not now — they were never writing, so nothing happened. */
+    fun skipComment(intentId: String) {
+        commentIntents.removeAll { it.id == intentId }
+        persistCommentIntents()
+    }
+
+    private fun setIntentState(intentId: String, writing: Boolean, failed: Boolean) {
+        val index = commentIntents.indexOfFirst { it.id == intentId }
+        if (index < 0) return
+        commentIntents[index] = commentIntents[index].copy(writing = writing, failed = failed)
+    }
+
+    private fun persistCommentIntents() {
+        val arr = JSONArray()
+        commentIntents.forEach { intent ->
+            arr.put(
+                JSONObject().apply {
+                    put("id", intent.id)
+                    put("postId", intent.postId)
+                    put("personaId", intent.personaId)
+                    put("at", intent.at)
+                },
+            )
+        }
+        prefs?.edit()?.putString(KEY_COMMENT_INTENTS, arr.toString())?.apply()
+    }
+
+    private suspend fun engineCommentText(persona: Persona, post: Post): String? {
+        if (!Engine.config.ready) return null
+        val prompt = buildString {
+            append("${me.name} (@${me.handle}) posted: \u201C${post.text}\u201D\n")
+            append("Write a short comment on their post, in your voice. One or two sentences, plain text only, no quotes.")
+        }
+        return Engine.chat(
+            Engine.personaPrompt(persona),
+            listOf("user" to prompt),
+            maxTokens = 140,
+            model = personaModel(persona.id),
+        )
+    }
+
+    /**
+     * You replied to a comment on your own post — the commenter writes back
+     * shortly after, to what you actually said. Sometimes they're busy.
+     */
+    private fun scheduleCommenterReply(postId: String) {
+        val post = posts.firstOrNull { it.id == postId } ?: return
+        if (post.authorId != "you") return
+        if (!Engine.config.ready) return
+        val target = replies.lastOrNull { it.postId == postId && it.authorId != "you" } ?: return
+        if (Random.nextDouble() > 0.8) return
+        val persona = Cast.byId(target.authorId)
+        scope.launch {
+            delay((10_000L..30_000L).random())
+            val myReply = replies.lastOrNull { it.postId == postId && it.authorId == "you" }?.text
+            val prompt = buildString {
+                append("Context — ${me.name}'s post: \u201C${post.text}\u201D\n")
+                append("You commented: \u201C${target.text}\u201D\n")
+                if (myReply != null) {
+                    append("${me.name} (@${me.handle}) replied to you: \u201C$myReply\u201D\n")
+                }
+                append("Write your reply back to them. One or two short sentences, plain text only, no quotes.")
+            }
+            val text = Engine.chat(
+                Engine.personaPrompt(persona),
+                listOf("user" to prompt),
+                maxTokens = 140,
+                model = personaModel(persona.id),
+            ) ?: return@launch
+            val reply = Reply(
+                id = "voice-b-${System.currentTimeMillis()}-${persona.id}",
+                postId = postId,
+                authorId = persona.id,
+                text = text,
+                createdAt = System.currentTimeMillis(),
+            )
+            val item = ActivityItem(
+                id = reply.id,
+                personaId = persona.id,
+                boldPart = persona.name,
+                rest = " replied: \u201C${reply.text}\u201D",
+                createdAt = reply.createdAt,
+                kind = ActivityKind.Reply,
+            )
+            persistReply(reply)
+            withContext(Dispatchers.Main) {
+                replies += reply
+                bumpReplyCount(postId)
+                if (openPost != postId) {
+                    persistActivity(item)
+                    activities.add(0, item)
+                }
+            }
+            tell(persona.name, text, "reply-${persona.id}")
+        }
+    }
 
     /** The thread with [personaId], oldest first. */
     fun dmWith(personaId: String): List<Dm> =
@@ -592,7 +811,7 @@ object World {
     private suspend fun engineDmReply(persona: Persona, history: List<Pair<String, String>>): String? {
         if (!Engine.config.ready) return null
         if (history.isEmpty() || history.last().first != "user") return null
-        return Engine.chat(Engine.dmPrompt(persona), history, maxTokens = 130)
+        return Engine.chat(Engine.dmPrompt(persona), history, maxTokens = 130, model = personaModel(persona.id))
     }
 
     private suspend fun engineDmOpen(persona: Persona): String? {
@@ -604,6 +823,7 @@ object World {
                     "in your voice, that gives them an easy reason to reply. One or two lines.",
             ),
             maxTokens = 120,
+            model = personaModel(persona.id),
         )
     }
 
@@ -643,6 +863,7 @@ object World {
                     "plain text only, no hashtags.",
             ),
             maxTokens = 100,
+            model = personaModel(persona.id),
         )?.let { trimStory(it) }
 
     /**
@@ -722,6 +943,7 @@ object World {
                             "Write a short reply to it, in your voice. One or two sentences, plain text only.",
                     ),
                     maxTokens = 140,
+                    model = personaModel(persona.id),
                 ) ?: return@launch
                 val reply = Reply(
                     id = "away-r-${intent.at}-${persona.id}",
@@ -761,6 +983,7 @@ object World {
                             "Write a short post mentioning them by @handle. One or two sentences, plain text only.",
                     ),
                     maxTokens = 140,
+                    model = personaModel(persona.id),
                 ) ?: return@launch
                 val post = Post(
                     id = "away-m-${intent.at}-${persona.id}",
@@ -798,6 +1021,7 @@ object World {
                             "something only you would send. One or two lines, plain text only.",
                     ),
                     maxTokens = 130,
+                    model = personaModel(persona.id),
                 ) ?: return@launch
                 deliverDm(persona.id, text, at = intent.at)
             }
@@ -813,6 +1037,7 @@ object World {
                     "in your voice. One or two short sentences, plain text only, no hashtags.",
             ),
             maxTokens = 140,
+            model = personaModel(persona.id),
         )
 
     /** Keeps the feed newest-first while posts land out of order. */
