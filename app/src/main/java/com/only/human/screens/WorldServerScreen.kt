@@ -338,7 +338,7 @@ fun WorldServerScreen(onBack: () -> Unit) {
                         budgetOpen = false
                         val value = budgetText.toIntOrNull()
                         if (value != null) {
-                            Server.setBudget(value)
+                            Server.applyBudget(value)
                             say("The world may write up to ${value.coerceIn(0, 1000)} times a day.")
                         }
                     },

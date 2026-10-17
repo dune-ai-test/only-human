@@ -404,7 +404,7 @@ object Server {
         }
     }
 
-    fun setBudget(value: Int) {
+    fun applyBudget(value: Int) {
         val clean = value.coerceIn(0, 1000)
         budget = clean
         act("budget", JSONObject().put("value", clean))
