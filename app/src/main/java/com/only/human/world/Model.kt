@@ -29,11 +29,26 @@ data class Post(
     val id: String,
     val authorId: String,
     val text: String,
-    val timeLabel: String,
+    /** Epoch millis. The label is derived, so it ages honestly across visits. */
+    val createdAt: Long,
     val likes: Int,
     val replies: Int,
     val likedByYou: Boolean = false,
-)
+) {
+    val timeLabel: String get() = relativeTime(createdAt)
+}
+
+/** "now" · "3m" · "2h" · "1d" · "3w" — the way the feed shows time. */
+fun relativeTime(then: Long, now: Long = System.currentTimeMillis()): String {
+    val seconds = ((now - then) / 1000L).coerceAtLeast(0L)
+    return when {
+        seconds < 60 -> "now"
+        seconds < 3_600 -> "${seconds / 60}m"
+        seconds < 86_400 -> "${seconds / 3_600}h"
+        seconds < 604_800 -> "${seconds / 86_400}d"
+        else -> "${seconds / 604_800}w"
+    }
+}
 
 /** One row in the Activity tab. */
 data class ActivityItem(

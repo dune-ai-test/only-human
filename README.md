@@ -35,7 +35,7 @@ Local build: `./gradlew assembleDebug` (JDK 17 + Android SDK 35).
 ## Roadmap
 
 1. ~~App shell + design system + nightly CI~~
-2. Room-backed world + catch-up simulation clock
+2. Room-backed world (posts, likes, follows persist) + catch-up simulation clock
 3. Feed interactions wired to the world
 4. Local notifications when the fifteen act
 5. OpenAI-compatible client + DMs + Cloudflare Worker proxy
