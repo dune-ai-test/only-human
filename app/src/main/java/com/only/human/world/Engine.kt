@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -72,6 +73,10 @@ object Engine {
     /**
      * One chat completion. Returns the assistant text, or null — [lastError]
      * carries the human-readable reason. Never throws.
+     *
+     * The free gateway throttles in short bursts (HTTP 429) and blips (5xx),
+     * so those are waited out and retried — the same request, the same
+     * model. If it still fails, nothing gets written: real writing only.
      */
     suspend fun chat(
         system: String,
@@ -79,6 +84,7 @@ object Engine {
         maxTokens: Int = 160,
         temperature: Double = 0.9,
         requireEnabled: Boolean = true,
+        retries: Int = 2,
     ): String? = withContext(Dispatchers.IO) {
         val cfg = config
         if (requireEnabled && !cfg.ready) return@withContext null
@@ -101,42 +107,49 @@ object Engine {
             put("temperature", temperature)
             put("stream", false)
         }
-        try {
-            val conn = (URL(chatUrl(cfg.endpoint)).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 12_000
-                readTimeout = 45_000
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                if (cfg.apiKey.isNotBlank()) {
-                    setRequestProperty("Authorization", "Bearer ${cfg.apiKey}")
+        var failure: String? = null
+        for (attempt in 0..retries.coerceIn(0, 2)) {
+            if (attempt > 0) delay(if (attempt == 1) 20_000L else 45_000L)
+            try {
+                val conn = (URL(chatUrl(cfg.endpoint)).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 12_000
+                    readTimeout = 45_000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                    if (cfg.apiKey.isNotBlank()) {
+                        setRequestProperty("Authorization", "Bearer ${cfg.apiKey}")
+                    }
                 }
+                conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (code !in 200..299) {
+                    failure = "HTTP $code — ${apiError(text)}"
+                    // Throttles and server blips pass; client errors won't.
+                    if (code == 429 || code in 500..599) continue else break
+                }
+                // A JSON null (or the literal "null" org.json hands back for
+                // one) means the model produced nothing visible — a miss.
+                val content = JSONObject(text)
+                    .optJSONArray("choices")?.optJSONObject(0)
+                    ?.optJSONObject("message")?.optString("content")
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() && it != "null" }
+                if (content == null) {
+                    failure = "Empty response"
+                    break
+                }
+                lastError = null
+                return@withContext sanitize(content)
+            } catch (e: Exception) {
+                // A dropped connection or a timeout is worth one more try.
+                failure = e.message?.take(140) ?: "Network error"
             }
-            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) {
-                lastError = "HTTP $code — ${apiError(text)}"
-                return@withContext null
-            }
-            // A JSON null (or the literal "null" org.json hands back for one)
-            // means the model produced nothing visible — treat it as a miss.
-            val content = JSONObject(text)
-                .optJSONArray("choices")?.optJSONObject(0)
-                ?.optJSONObject("message")?.optString("content")
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() && it != "null" }
-            if (content == null) {
-                lastError = "Empty response"
-                return@withContext null
-            }
-            lastError = null
-            sanitize(content)
-        } catch (e: Exception) {
-            lastError = e.message?.take(140) ?: "Network error"
-            null
         }
+        lastError = failure
+        null
     }
 
     /** Round-trips a tiny prompt. Returns one line for the settings screen. */
@@ -149,6 +162,7 @@ object Engine {
             maxTokens = 16,
             temperature = 0.0,
             requireEnabled = false,
+            retries = 0,   // the diagnostic should say it exactly as it is
         )
         return if (reply != null) {
             "Connected — they said: \u201C$reply\u201D"
