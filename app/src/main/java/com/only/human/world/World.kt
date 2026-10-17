@@ -73,7 +73,6 @@ object World {
     /** Local notifications while you're away — off until you switch them on. */
     var notifyEnabled by mutableStateOf(false)
         private set
-        private set
 
     /** You, as the rest of the app sees you. */
     val mePersona: Persona
