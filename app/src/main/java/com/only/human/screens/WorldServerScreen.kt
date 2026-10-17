@@ -27,7 +27,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.only.human.design.colors
-import com.only.human.design.components.CompactValueField
 import com.only.human.design.components.GroupedRow
 import com.only.human.design.components.IOSBackButton
 import com.only.human.design.components.IOSFilledButton
