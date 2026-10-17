@@ -4,6 +4,7 @@ import { handleAct, handleCreate, handleDelete, handleExport, handleSync } from 
 import { runDueJobs } from "./director";
 import type { Env } from "./types";
 import { json } from "./util";
+import { htmlResponse, landingPage, windowPage } from "./web";
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -18,6 +19,11 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (req.method === "GET" && url.pathname === "/v1/health") {
       return json({ ok: true, t: Date.now() });
+    }
+    // The site: a quiet landing page, and the read-only window into a world.
+    if (req.method === "GET" || req.method === "HEAD") {
+      if (url.pathname === "/") return htmlResponse(landingPage());
+      if (url.pathname === "/w" || url.pathname === "/w/") return htmlResponse(windowPage());
     }
     if (req.method !== "POST") return json({ error: "not found" }, 404);
 

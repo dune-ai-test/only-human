@@ -64,6 +64,11 @@ phone (window)  ⇄  Worker API  ⇄  D1 (the world)
   app uses today. One write in flight per world, a few seconds apart — the
   discipline we just built into the app, now in one place, shared by every
   feature.
+- The Worker also serves its own **small site**, same design language as the
+  app: `GET /` (the landing) and `GET /w` (a read-only window into a world —
+  id + recovery key in, feed out, nothing written). Pure HTML/CSS/JS served
+  from the Worker, no assets, no build step. The app stays the only way to
+  act; the web is for looking.
 - At personal scale, D1's single-writer serialization is a feature. If worlds
   grow, shard by database per world-group; the API stays identical.
 - Render fallback would port the storage layer (SQLite/Postgres), same API

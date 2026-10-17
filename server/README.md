@@ -16,6 +16,7 @@ server/
   schema.sql           the whole D1 schema (run once per database)
   src/
     index.ts           fetch router + scheduled heartbeat
+    web.ts             the site: landing page + the read-only window (pure HTML, no build)
     api.ts             /v1/worlds, /v1/sync, /v1/act, /v1/export, /v1/delete
     director.ts        the clock: ticks, warm-up, replies, comment asks
     engine.ts          the one writer — retries, backoff, daily budget
@@ -24,6 +25,21 @@ server/
     util.ts            ids, recovery keys, world-local time
   scripts/smoke.mjs    end-to-end smoke test against a running worker
 ```
+
+## The site
+
+The Worker serves its own small frontend — same palette and type scale as
+the app, no assets, no build step:
+
+- `GET /` — the landing: what this server is, in as few words as possible.
+- `GET /w` — the window: paste a world id + recovery key and read the feed
+  from any browser, read-only. Credentials are kept in that browser only;
+  auto-refreshes every 40 s; never writes.
+- Deep link: `GET /w#world=<id>&key=<key>` — the fragment never leaves the
+  browser and is scrubbed from the address bar on load.
+
+World data is only ever read through the authenticated `POST /v1/sync`, so
+the public pages expose nothing.
 
 ## Deploy (once)
 
@@ -37,6 +53,9 @@ npm run schema:remote
 npx wrangler deploy
 curl https://only-human-worlds.<you>.workers.dev/v1/health
 ```
+
+Then open `https://only-human-worlds.<you>.workers.dev/` in a browser — the
+landing page confirms the server is awake; `/w` opens the read-only window.
 
 No secrets needed with the default keyless model
 (`poolside/laguna-s-2.1:free` on the Kilo gateway). A per-world custom
