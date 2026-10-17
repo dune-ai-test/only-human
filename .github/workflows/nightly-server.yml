@@ -1,10 +1,21 @@
 name: Nightly Server
 
-# Manual only, ever. Builds the app exactly as it exists on this branch and
-# publishes it to its own rolling release (`nightly-server`), so the
-# world-server work can be installed and tested on a phone without touching
-# the `nightly` channel or `main` in any way.
+# Builds the app exactly as it exists on this branch and publishes it to its
+# own rolling release (`nightly-server`), so the world-server work can be
+# installed and tested on a phone without touching the `nightly` channel or
+# `main` in any way.
+#
+# GitHub only shows the manual "Run workflow" button for workflows that live
+# on the default branch (main), so this branch-only workflow is triggered by
+# a marker commit instead:
+#
+#   git commit --allow-empty -m "[app-build] nightly-server"
+#   git push
+#
+# Pushes without the marker are no-ops (the run appears as skipped).
 on:
+  push:
+    branches: [world-server]
   workflow_dispatch:
 
 concurrency:
@@ -17,6 +28,9 @@ permissions:
 jobs:
   nightly-server:
     name: Build & publish server APK
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[app-build]')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
