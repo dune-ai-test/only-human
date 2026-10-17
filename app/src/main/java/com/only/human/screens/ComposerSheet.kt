@@ -34,7 +34,7 @@ import com.only.human.design.components.IOSFilledButton
 import com.only.human.design.components.MonogramAvatar
 import com.only.human.design.iosClickable
 import com.only.human.design.type
-import com.only.human.world.Cast
+import com.only.human.world.World
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,7 +47,7 @@ fun ComposerSheet(
 ) {
     val c = colors
     val t = type
-    val you = Cast.you
+    val you = World.mePersona
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var text by rememberSaveable { mutableStateOf("") }
 

@@ -32,21 +32,24 @@ import com.only.human.design.components.RowChevron
 import com.only.human.design.components.rememberCollapseOffset
 import com.only.human.design.type
 import com.only.human.world.Cast
+import com.only.human.world.Engine
 import com.only.human.world.World
 
 /** Your own profile — the only human's page. */
 @Composable
 fun YouScreen(
     onOpenSettings: () -> Unit,
+    onOpenEngine: () -> Unit,
     onCompose: () -> Unit,
     onOpenPost: (String) -> Unit,
 ) {
     val c = colors
     val t = type
-    val you = Cast.you
+    val you = World.mePersona
     val listState = rememberLazyListState()
     val offset = rememberCollapseOffset(listState)
     val posts = World.postsBy(you.id)
+    val engine = Engine.config
 
     LargeTitleScaffold(title = "You", offsetProvider = offset) { padding ->
         LazyColumn(
@@ -63,7 +66,7 @@ fun YouScreen(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    MonogramAvatar(you.gradient, "Y", 88.dp)
+                    MonogramAvatar(you.gradient, you.initials, 88.dp)
                     Spacer(Modifier.height(12.dp))
                     Text(you.name, style = t.title2, color = c.label)
                     Text("@${you.handle}", style = t.subheadline, color = c.labelSecondary)
@@ -122,10 +125,14 @@ fun YouScreen(
                 InsetGroup(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                     GroupedRow(
                         title = "AI & Simulation",
-                        subtitle = "Endpoint, model, and API key",
+                        subtitle = if (engine.ready) {
+                            "On · ${engine.model}"
+                        } else {
+                            "Offline voices — they still write"
+                        },
                         trailing = { RowChevron() },
                         showDivider = true,
-                        onClick = onOpenSettings,
+                        onClick = onOpenEngine,
                     )
                     GroupedRow(
                         title = "About Only Human",

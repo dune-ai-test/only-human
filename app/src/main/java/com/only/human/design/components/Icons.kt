@@ -77,6 +77,10 @@ object OhIcons {
         stroke("M5.7,12.7 L9.9,16.9 L18.3,7.7", width = 2.0f)
     }
 
+    val ArrowUp = strokeIcon("ArrowUp") {
+        stroke("M12,19.2 L12,5.4 M6.4,10.9 L12,5.4 L17.6,10.9", width = 1.9f)
+    }
+
     val Ellipsis = fillIcon("Ellipsis") {
         fill(circle(6f, 12f, 1.5f))
         fill(circle(12f, 12f, 1.5f))

@@ -34,7 +34,10 @@ import com.only.human.design.components.OhIcons
 import com.only.human.design.components.TabSpec
 import com.only.human.screens.ComposerSheet
 import com.only.human.screens.DiscoverScreen
+import com.only.human.screens.DmScreen
+import com.only.human.screens.EngineScreen
 import com.only.human.screens.FeedScreen
+import com.only.human.screens.MessagesScreen
 import com.only.human.screens.NotificationsScreen
 import com.only.human.screens.PostPage
 import com.only.human.screens.ProfileScreen
@@ -47,7 +50,10 @@ sealed interface Route {
     data class Home(val tab: Int) : Route
     data class Person(val id: String) : Route
     data class Post(val id: String) : Route
+    data class Dm(val id: String) : Route
+    data object Messages : Route
     data object Settings : Route
+    data object Engine : Route
 }
 
 /** Route + stack depth — depth drives push/pop animation direction. */
@@ -87,6 +93,16 @@ fun AppShell() {
 
     BackHandler(enabled = nav.stack.isNotEmpty()) { nav.pop() }
 
+    // Everything unseen lives behind the Activity tab: notifications + DMs.
+    val activityBadge = World.unreadActivityCount() + World.unreadDmsTotal()
+    val tabs = listOf(
+        TabSpec("Feed", OhIcons.Home),
+        TabSpec("Discover", OhIcons.Search),
+        TabSpec("Post", OhIcons.Plus),
+        TabSpec("Activity", OhIcons.Bell, badge = activityBadge),
+        TabSpec("You", OhIcons.Person),
+    )
+
     CompositionLocalProvider(LocalTabBarInset provides tabBarInset) {
         Box(Modifier.fillMaxSize().background(colors.grouped)) {
             AnimatedContent(
@@ -115,9 +131,14 @@ fun AppShell() {
                             onOpenPost = { nav.push(Route.Post(it)) },
                         )
                         1 -> DiscoverScreen(onOpenProfile = { nav.push(Route.Person(it)) })
-                        3 -> NotificationsScreen(onOpenProfile = { nav.push(Route.Person(it)) })
+                        3 -> NotificationsScreen(
+                            onOpenProfile = { nav.push(Route.Person(it)) },
+                            onOpenMessages = { nav.push(Route.Messages) },
+                            onOpenDm = { nav.push(Route.Dm(it)) },
+                        )
                         else -> YouScreen(
                             onOpenSettings = { nav.push(Route.Settings) },
+                            onOpenEngine = { nav.push(Route.Engine) },
                             onCompose = { composerOpen = true },
                             onOpenPost = { nav.push(Route.Post(it)) },
                         )
@@ -126,13 +147,26 @@ fun AppShell() {
                         personaId = route.id,
                         onBack = { nav.pop() },
                         onOpenPost = { nav.push(Route.Post(it)) },
+                        onOpenDm = { nav.push(Route.Dm(it)) },
                     )
                     is Route.Post -> PostPage(
                         postId = route.id,
                         onBack = { nav.pop() },
                         onOpenProfile = { nav.push(Route.Person(it)) },
                     )
-                    Route.Settings -> SettingsScreen(onBack = { nav.pop() })
+                    is Route.Dm -> DmScreen(
+                        personaId = route.id,
+                        onBack = { nav.pop() },
+                    )
+                    Route.Messages -> MessagesScreen(
+                        onBack = { nav.pop() },
+                        onOpenDm = { nav.push(Route.Dm(it)) },
+                    )
+                    Route.Settings -> SettingsScreen(
+                        onBack = { nav.pop() },
+                        onOpenEngine = { nav.push(Route.Engine) },
+                    )
+                    Route.Engine -> EngineScreen(onBack = { nav.pop() })
                 }
             }
 
@@ -159,11 +193,3 @@ fun AppShell() {
         )
     }
 }
-
-private val tabs = listOf(
-    TabSpec("Feed", OhIcons.Home),
-    TabSpec("Discover", OhIcons.Search),
-    TabSpec("Post", OhIcons.Plus),
-    TabSpec("Activity", OhIcons.Bell),
-    TabSpec("You", OhIcons.Person),
-)

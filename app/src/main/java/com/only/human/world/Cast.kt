@@ -192,9 +192,23 @@ object Cast {
 
     val all: List<Persona> = people + you
 
-    private val byId = all.associateBy { it.id }
+    /** The six avatars you can pick during onboarding. The first is the default. */
+    val avatarPalettes: List<List<Color>> = listOf(
+        listOf(Color(0xFF6EC6FF), Color(0xFF0A84FF)),
+        listOf(Color(0xFFFFB199), Color(0xFFFF5E7E)),
+        listOf(Color(0xFF62D9A5), Color(0xFF16966B)),
+        listOf(Color(0xFF9B8CF7), Color(0xFF6B4EE0)),
+        listOf(Color(0xFFF7D06B), Color(0xFFF0A44B)),
+        listOf(Color(0xFFF0A6CA), Color(0xFFC86DD7)),
+    )
 
-    fun byId(id: String): Persona = byId[id] ?: you
+    private val lookup = all.associateBy { it.id }
+
+    /**
+     * "you" resolves to the live profile — whatever name and handle onboarding
+     * saved — so every screen that renders an author picks up the real human.
+     */
+    fun byId(id: String): Persona = if (id == "you") World.mePersona else lookup[id] ?: you
 
     /** Who knows whom. Everyone is at most one reply away from everyone else. */
     val relationships: List<Relation> = listOf(

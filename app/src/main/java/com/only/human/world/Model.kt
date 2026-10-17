@@ -8,7 +8,7 @@ data class Persona(
     val name: String,
     val handle: String,          // without the @
     val bio: String,
-    /** Short writing-style note. Seeds the LLM persona prompt later. */
+    /** Short writing-style note. Seeds the LLM persona prompt. */
     val voice: String,
     val gradient: List<Color>,
     val joinedYear: String,
@@ -23,6 +23,13 @@ data class Persona(
         }
     }
 }
+
+/** You. The one human — named during onboarding. */
+data class Me(
+    val name: String,
+    val handle: String,
+    val avatarIndex: Int = 0,
+)
 
 /** A post. Text only — this network has no photos. */
 data class Post(
@@ -75,4 +82,24 @@ data class ActivityItem(
     val timeLabel: String get() = relativeTime(createdAt)
 }
 
-enum class ActivityKind { Follow, Like, Reply, Mention, System }
+enum class ActivityKind { Follow, Like, Reply, Mention, Message, System }
+
+/** A direct message — one side of a private thread. */
+data class Dm(
+    val id: String,
+    val personaId: String,
+    /** true when you wrote it. */
+    val fromMe: Boolean,
+    val text: String,
+    /** Epoch millis. */
+    val at: Long,
+) {
+    val timeLabel: String get() = relativeTime(at)
+}
+
+/** A conversation shown in the Messages list. */
+data class DmThread(
+    val personaId: String,
+    val last: Dm,
+    val unread: Int,
+)

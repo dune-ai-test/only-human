@@ -14,10 +14,12 @@ import com.only.human.design.components.IOSBackButton
 import com.only.human.design.components.InsetGroup
 import com.only.human.design.components.LargeTitleHeader
 import com.only.human.design.components.LargeTitleScaffold
+import com.only.human.design.components.RowChevron
 import com.only.human.design.components.rememberCollapseOffset
+import com.only.human.world.Engine
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onOpenEngine: () -> Unit) {
     val listState = rememberLazyListState()
     val offset = rememberCollapseOffset(listState)
 
@@ -36,15 +38,40 @@ fun SettingsScreen(onBack: () -> Unit) {
         ) {
             item(key = "title") { LargeTitleHeader("Settings") }
             item(key = "ai") {
+                val cfg = Engine.config
                 InsetGroup(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                     header = "AI",
                     footer = "Only Human runs fully offline until you connect an OpenAI-compatible endpoint. " +
                         "Then the fifteen start writing for real.",
                 ) {
-                    GroupedRow("Endpoint", subtitle = "not configured", showDivider = true)
-                    GroupedRow("Model", subtitle = "not configured", showDivider = true)
-                    GroupedRow("API key", subtitle = "stays on device, or in your Cloudflare proxy", showDivider = false)
+                    GroupedRow(
+                        "AI engine",
+                        subtitle = if (cfg.ready) "On — writing for real" else "Off — using offline voices",
+                        trailing = { RowChevron() },
+                        showDivider = true,
+                        onClick = onOpenEngine,
+                    )
+                    GroupedRow(
+                        "Endpoint",
+                        subtitle = cfg.endpoint.ifBlank { "not set" },
+                        trailing = { RowChevron() },
+                        showDivider = true,
+                        onClick = onOpenEngine,
+                    )
+                    GroupedRow(
+                        "Model",
+                        subtitle = cfg.model.ifBlank { "not set" },
+                        trailing = { RowChevron() },
+                        showDivider = true,
+                        onClick = onOpenEngine,
+                    )
+                    GroupedRow(
+                        "API key",
+                        subtitle = if (cfg.apiKey.isBlank()) "not set — running offline" else "saved on this device",
+                        showDivider = false,
+                        onClick = onOpenEngine,
+                    )
                 }
             }
             item(key = "network") {

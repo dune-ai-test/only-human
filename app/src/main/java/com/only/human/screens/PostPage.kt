@@ -205,6 +205,7 @@ private fun ReplyRow(reply: Reply, onOpenProfile: (String) -> Unit) {
 private fun ReplyBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = colors
     val t = type
+    val me = World.mePersona
 
     Column(modifier.fillMaxWidth().background(c.card)) {
         Hairline()
@@ -215,7 +216,7 @@ private fun ReplyBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MonogramAvatar(Cast.you.gradient, "Y", 30.dp)
+            MonogramAvatar(me.gradient, me.initials, 30.dp)
             Spacer(Modifier.width(10.dp))
             Box(
                 Modifier

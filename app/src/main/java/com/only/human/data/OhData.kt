@@ -56,6 +56,16 @@ data class ReplyEntity(
     val createdAt: Long,
 )
 
+/** A direct message, as it lives on disk. */
+@Entity(tableName = "dms")
+data class DmEntity(
+    @PrimaryKey val id: String,
+    val personaId: String,
+    val fromMe: Boolean,
+    val text: String,
+    val at: Long,
+)
+
 @Dao
 interface OhDao {
 
@@ -94,11 +104,20 @@ interface OhDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertFollow(follow: FollowEntity)
+
+    @Query("SELECT * FROM dms ORDER BY at ASC")
+    suspend fun dms(): List<DmEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDms(items: List<DmEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDm(item: DmEntity)
 }
 
 @Database(
-    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class, ReplyEntity::class],
-    version = 3,
+    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class, ReplyEntity::class, DmEntity::class],
+    version = 4,
     exportSchema = false,
 )
 abstract class OhDatabase : RoomDatabase() {
@@ -139,11 +158,25 @@ abstract class OhDatabase : RoomDatabase() {
             }
         }
 
+        /** v4: direct messages — the fifteen can write to you privately now. */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS dms (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "personaId TEXT NOT NULL, " +
+                        "fromMe INTEGER NOT NULL, " +
+                        "text TEXT NOT NULL, " +
+                        "at INTEGER NOT NULL)",
+                )
+            }
+        }
+
         fun get(context: Context): OhDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room
                     .databaseBuilder(context.applicationContext, OhDatabase::class.java, "only-human.db")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     // Nightlies may change the schema freely; pre-1.0 nothing on disk is precious.
                     .fallbackToDestructiveMigration()
                     .build()

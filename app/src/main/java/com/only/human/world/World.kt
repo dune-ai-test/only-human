@@ -2,9 +2,13 @@ package com.only.human.world
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.only.human.data.ActivityEntity
+import com.only.human.data.DmEntity
 import com.only.human.data.FollowEntity
 import com.only.human.data.OhDao
 import com.only.human.data.OhDatabase
@@ -22,21 +26,53 @@ import kotlin.random.Random
  * The living state of the network.
  *
  * The UI reads from here; every write goes through here into Room. Coming
- * back after a gap runs the catch-up simulation: the fifteen post, reply and
- * follow while you're gone, and the feed and Activity tab show what you
- * missed — all in their own voices, no LLM required.
+ * back after a gap runs the catch-up simulation: the fifteen post, reply,
+ * follow and DM while you're gone, and the feed and Activity tab show what
+ * you missed — in their own voices, LLM or not.
  */
 object World {
 
     val posts = mutableStateListOf<Post>()
     val activities = mutableStateListOf<ActivityItem>()
     val replies = mutableStateListOf<Reply>()
+    val dms = mutableStateListOf<Dm>()
 
     /** personaId -> you follow them. */
     val following = mutableStateMapOf<String, Boolean>()
 
     /** personaId -> they follow you. */
     val followedBy = mutableStateMapOf<String, Boolean>()
+
+    /** personaId -> they're typing a DM right now. */
+    val typing = mutableStateMapOf<String, Boolean>()
+
+    /** personaId -> the last time you opened their thread. */
+    val dmSeen = mutableStateMapOf<String, Long>()
+
+    /** Who the human is. Set once during onboarding, remembered forever. */
+    var me by mutableStateOf(Me("You", "you", 0))
+        private set
+
+    /** False until onboarding finishes — the shell shows the setup flow. */
+    var onboarded by mutableStateOf(false)
+        private set
+
+    /** The last time you looked at the Activity tab. Drives the tab badge. */
+    var activitySeenAt by mutableStateOf(0L)
+        private set
+
+    /** You, as the rest of the app sees you. */
+    val mePersona: Persona
+        get() = Persona(
+            id = "you",
+            name = me.name,
+            handle = me.handle,
+            bio = "the only human here.",
+            voice = "the human",
+            gradient = Cast.avatarPalettes[me.avatarIndex.coerceIn(0, Cast.avatarPalettes.size - 1)],
+            joinedYear = "2026",
+            followerBoost = 0,
+        )
 
     private var database: OhDatabase? = null
     private var prefs: SharedPreferences? = null
@@ -45,6 +81,10 @@ object World {
 
     private const val PREFS = "only_human"
     private const val KEY_LAST_VISIT = "lastVisitAt"
+    private const val KEY_ME_NAME = "meName"
+    private const val KEY_ME_HANDLE = "meHandle"
+    private const val KEY_ME_AVATAR = "meAvatar"
+    private const val KEY_ACTIVITY_SEEN = "activitySeenAt"
 
     init {
         Cast.people.forEach {
@@ -62,23 +102,40 @@ object World {
     /**
      * Show the world immediately, then reconcile with disk: the first launch
      * seeds Room, every launch after restores what actually happened — and
-     * simulates the time you were away.
+     * simulates the time you were away. Before onboarding, nothing is seeded:
+     * the world is written around your name.
      */
     fun start(context: Context) {
         if (database != null) return
         val db = OhDatabase.get(context)
         database = db
-        prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs = p
+        Engine.load(p)
 
-        val base = System.currentTimeMillis()
-        posts.addAll(Seed.posts(base))
-        activities.addAll(Seed.activities(base))
-        replies.addAll(Seed.replies(base))
+        val storedMe = Me(
+            name = p.getString(KEY_ME_NAME, "") ?: "",
+            handle = p.getString(KEY_ME_HANDLE, "") ?: "",
+            avatarIndex = p.getInt(KEY_ME_AVATAR, 0),
+        )
+        if (storedMe.name.isNotEmpty() && storedMe.handle.isNotEmpty()) {
+            me = storedMe
+            onboarded = true
+        }
+        activitySeenAt = p.getLong(KEY_ACTIVITY_SEEN, 0L)
+        Cast.people.forEach { dmSeen[it.id] = p.getLong("dmSeen_${it.id}", 0L) }
+
+        if (onboarded) {
+            val base = System.currentTimeMillis()
+            posts.addAll(Seed.posts(base, me.handle))
+            activities.addAll(Seed.activities(base))
+            replies.addAll(Seed.replies(base))
+        }
 
         scope.launch {
             val dao = db.dao()
             val firstRun = dao.postCount() == 0
-            if (firstRun) {
+            if (firstRun && onboarded) {
                 dao.upsertPosts(posts.map { it.toEntity() })
                 dao.upsertActivities(activities.map { it.toEntity() })
                 dao.upsertReplies(replies.map { it.toEntity() })
@@ -96,20 +153,70 @@ object World {
             val storedPosts = dao.posts().map { it.toModel() }
             val storedActivities = dao.activities().map { it.toModel() }
             val storedReplies = dao.replies().map { it.toModel() }
+            val storedDms = dao.dms().map { it.toModel() }
             val storedFollows = dao.follows()
             withContext(Dispatchers.Main) {
-                posts.clear()
-                posts.addAll(storedPosts)
-                activities.clear()
-                activities.addAll(storedActivities)
-                replies.clear()
-                replies.addAll(storedReplies)
+                // If onboarding completed while this boot was still running,
+                // the freshly seeded world in memory is the truth — keep it.
+                if (storedPosts.isNotEmpty() || !onboarded) {
+                    posts.clear()
+                    posts.addAll(storedPosts)
+                    activities.clear()
+                    activities.addAll(storedActivities)
+                    replies.clear()
+                    replies.addAll(storedReplies)
+                }
+                dms.clear()
+                dms.addAll(storedDms)
                 storedFollows.forEach {
                     following[it.personaId] = it.following
                     followedBy[it.personaId] = it.followsYou
                 }
             }
             prefs?.edit()?.putLong(KEY_LAST_VISIT, System.currentTimeMillis())?.apply()
+        }
+    }
+
+    /**
+     * Onboarding finished: remember who you are, seed the world around the
+     * name, and let Sofia do what Sofia does.
+     */
+    fun completeOnboarding(name: String, handle: String, avatarIndex: Int) {
+        val cleanName = name.trim().take(24)
+        val cleanHandle = handle.trim().lowercase().take(16)
+        if (cleanName.isEmpty() || cleanHandle.isEmpty()) return
+
+        me = Me(cleanName, cleanHandle, avatarIndex)
+        onboarded = true
+        activitySeenAt = System.currentTimeMillis()
+        prefs?.edit()
+            ?.putString(KEY_ME_NAME, cleanName)
+            ?.putString(KEY_ME_HANDLE, cleanHandle)
+            ?.putInt(KEY_ME_AVATAR, avatarIndex)
+            ?.putLong(KEY_ACTIVITY_SEEN, activitySeenAt)
+            ?.apply()
+
+        val base = System.currentTimeMillis()
+        if (posts.isEmpty()) {
+            posts.addAll(Seed.posts(base, cleanHandle))
+            activities.addAll(Seed.activities(base))
+            replies.addAll(Seed.replies(base))
+        }
+
+        scope.launch {
+            val dao = database?.dao() ?: return@launch
+            if (dao.postCount() == 0) {
+                dao.upsertPosts(posts.map { it.toEntity() })
+                dao.upsertActivities(activities.map { it.toEntity() })
+                dao.upsertReplies(replies.map { it.toEntity() })
+                following.forEach { (id, value) ->
+                    dao.upsertFollow(FollowEntity(id, value, followedBy[id] == true))
+                }
+            }
+            prefs?.edit()?.putLong(KEY_LAST_VISIT, System.currentTimeMillis())?.apply()
+            // Sofia can't help herself — the first DM arrives shortly after
+            // you move in.
+            welcomeDm("sofia")
         }
     }
 
@@ -128,12 +235,14 @@ object World {
             to = to,
             allPosts = dao.posts().map { it.toModel() },
             followedYou = followRows.associate { it.personaId to it.followsYou },
+            myHandle = me.handle,
             rng = Random(from xor to),
         )
         if (result.isEmpty) return
         if (result.posts.isNotEmpty()) dao.upsertPosts(result.posts.map { it.toEntity() })
         if (result.edited.isNotEmpty()) dao.upsertPosts(result.edited.map { it.toEntity() })
         if (result.activities.isNotEmpty()) dao.upsertActivities(result.activities.map { it.toEntity() })
+        if (result.dms.isNotEmpty()) dao.upsertDms(result.dms.map { it.toEntity() })
         result.followsYou.forEach { (id, value) ->
             val mine = followRows.firstOrNull { it.personaId == id }?.following ?: (following[id] == true)
             dao.upsertFollow(FollowEntity(id, mine, value))
@@ -182,7 +291,9 @@ object World {
 
     /**
      * The author writes back shortly after — like a person, not a webhook.
-     * Skipped now and then so it never feels automatic.
+     * Skipped now and then so it never feels automatic. When the AI engine is
+     * configured, the reply is actually written, in their voice; otherwise it
+     * comes from the offline lines.
      */
     private fun schedulePersonaReply(postId: String) {
         val post = posts.firstOrNull { it.id == postId } ?: return
@@ -193,11 +304,14 @@ object World {
         scope.launch {
             delay((9_000L..28_000L).random())
             val persona = Cast.byId(authorId)
+            val myReply = replies.lastOrNull { it.postId == postId && it.authorId == "you" }?.text
+            val text = (if (myReply != null) engineReplyText(persona, post, myReply) else null)
+                ?: Voices.replyBack(authorId, Random)
             val reply = Reply(
                 id = "voice-r-${System.currentTimeMillis()}-${authorId}",
                 postId = postId,
                 authorId = authorId,
-                text = Voices.replyBack(authorId, Random),
+                text = text,
                 createdAt = System.currentTimeMillis(),
             )
             val item = ActivityItem(
@@ -218,6 +332,144 @@ object World {
         }
     }
 
+    private suspend fun engineReplyText(persona: Persona, post: Post, myReply: String): String? {
+        if (!Engine.config.ready) return null
+        val prompt = buildString {
+            append("Context — your post: \u201C${post.text}\u201D\n")
+            append("${me.name} (@${me.handle}) replied to it: \u201C$myReply\u201D\n")
+            append("Write your reply back. One or two short sentences, plain text only, no quotes.")
+        }
+        return Engine.chat(Engine.personaPrompt(persona), listOf("user" to prompt), maxTokens = 140)
+    }
+
+    // ---- direct messages ---------------------------------------------------
+
+    /** The thread with [personaId], oldest first. */
+    fun dmWith(personaId: String): List<Dm> =
+        dms.filter { it.personaId == personaId }.sortedBy { it.at }
+
+    /** Every conversation, newest first — what the Messages list shows. */
+    fun dmThreads(): List<DmThread> =
+        dms.groupBy { it.personaId }
+            .mapNotNull { (id, list) ->
+                list.maxByOrNull { it.at }?.let { DmThread(id, it, unreadDmCount(id)) }
+            }
+            .sortedByDescending { it.last.at }
+
+    /** You send a DM; they write back shortly after — in voice, like a person. */
+    fun sendDm(personaId: String, text: String) {
+        val clean = text.trim()
+        if (clean.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val dm = Dm(
+            id = "local-dm-$now-${postSeq++}",
+            personaId = personaId,
+            fromMe = true,
+            text = clean.take(600),
+            at = now,
+        )
+        dms += dm
+        persistDm(dm)
+        markDmSeen(personaId)
+        scheduleDmReply(personaId)
+    }
+
+    private fun scheduleDmReply(personaId: String) {
+        val persona = Cast.byId(personaId)
+        scope.launch {
+            withContext(Dispatchers.Main) { typing[personaId] = true }
+            delay((12_000L..30_000L).random())
+            val history = dms.filter { it.personaId == personaId }.takeLast(12)
+                .map { (if (it.fromMe) "user" else "assistant") to it.text }
+            val text = engineDmReply(persona, history) ?: Voices.dmReply(personaId, Random)
+            deliverDm(personaId, text)
+        }
+    }
+
+    /** They notice you exist and write first — the welcome message. */
+    private fun welcomeDm(personaId: String) {
+        val persona = Cast.byId(personaId)
+        scope.launch {
+            delay((14_000L..26_000L).random())
+            withContext(Dispatchers.Main) { typing[personaId] = true }
+            val text = engineDmOpen(persona) ?: Voices.dmOpen(personaId, Random)
+            deliverDm(personaId, text)
+        }
+    }
+
+    /** Delivers an incoming DM plus its Activity row. Safe from any thread. */
+    private suspend fun deliverDm(personaId: String, text: String) {
+        val now = System.currentTimeMillis()
+        val persona = Cast.byId(personaId)
+        val dm = Dm(
+            id = "voice-dm-$now-$personaId",
+            personaId = personaId,
+            fromMe = false,
+            text = text,
+            at = now,
+        )
+        val item = ActivityItem(
+            id = "dm-a-$now-$personaId",
+            personaId = personaId,
+            boldPart = persona.name,
+            rest = " sent you a message",
+            createdAt = now,
+            kind = ActivityKind.Message,
+        )
+        persistDm(dm)
+        persistActivity(item)
+        withContext(Dispatchers.Main) {
+            typing[personaId] = false
+            dms += dm
+            activities.add(0, item)
+        }
+    }
+
+    private suspend fun engineDmReply(persona: Persona, history: List<Pair<String, String>>): String? {
+        if (!Engine.config.ready) return null
+        if (history.isEmpty() || history.last().first != "user") return null
+        return Engine.chat(Engine.dmPrompt(persona), history, maxTokens = 130)
+    }
+
+    private suspend fun engineDmOpen(persona: Persona): String? {
+        if (!Engine.config.ready) return null
+        return Engine.chat(
+            Engine.dmPrompt(persona),
+            listOf(
+                "user" to "Write the first DM you'd send to your new neighbor ${me.name} — something personal, " +
+                    "in your voice, that gives them an easy reason to reply. One or two lines.",
+            ),
+            maxTokens = 120,
+        )
+    }
+
+    // ---- seen state + badges -----------------------------------------------
+
+    fun markActivitySeen() {
+        val now = System.currentTimeMillis()
+        activitySeenAt = now
+        prefs?.edit()?.putLong(KEY_ACTIVITY_SEEN, now)?.apply()
+    }
+
+    /** Activity rows you haven't looked at; the system welcome doesn't count. */
+    fun unreadActivityCount(): Int =
+        activities.count { it.createdAt > activitySeenAt && it.kind != ActivityKind.System }
+
+    fun markDmSeen(personaId: String) {
+        val now = System.currentTimeMillis()
+        dmSeen[personaId] = now
+        prefs?.edit()?.putLong("dmSeen_$personaId", now)?.apply()
+    }
+
+    fun unreadDmCount(personaId: String): Int {
+        val seen = dmSeen[personaId] ?: 0L
+        return dms.count { it.personaId == personaId && !it.fromMe && it.at > seen }
+    }
+
+    fun unreadDmsTotal(): Int = Cast.people.sumOf { unreadDmCount(it.id) }
+
+    // ---- everything else ---------------------------------------------------
+
     private fun persistReply(reply: Reply) {
         val db = database ?: return
         scope.launch { db.dao().upsertReply(reply.toEntity()) }
@@ -226,6 +478,11 @@ object World {
     private fun persistActivity(item: ActivityItem) {
         val db = database ?: return
         scope.launch { db.dao().upsertActivity(item.toEntity()) }
+    }
+
+    private fun persistDm(dm: Dm) {
+        val db = database ?: return
+        scope.launch { db.dao().upsertDm(dm.toEntity()) }
     }
 
     fun toggleLike(postId: String) {
@@ -314,6 +571,22 @@ private fun ActivityEntity.toModel() = ActivityItem(
     kind = runCatching { ActivityKind.valueOf(kind) }.getOrDefault(ActivityKind.System),
 )
 
+private fun Dm.toEntity() = DmEntity(
+    id = id,
+    personaId = personaId,
+    fromMe = fromMe,
+    text = text,
+    at = at,
+)
+
+private fun DmEntity.toModel() = Dm(
+    id = id,
+    personaId = personaId,
+    fromMe = fromMe,
+    text = text,
+    at = at,
+)
+
 /** The world as it looked the moment you arrived. */
 private object Seed {
 
@@ -321,8 +594,8 @@ private object Seed {
      * [base] is "now". Every seed post gets a real timestamp so time can
      * move on honestly — come back tomorrow and Sofia's first post says "1d".
      */
-    fun posts(base: Long): List<Post> = listOf(
-        seed("p1", "sofia", "everyone say hi to @you. they're new. be normal.\n— nobody be normal", 3, 27, 6, base),
+    fun posts(base: Long, myHandle: String): List<Post> = listOf(
+        seed("p1", "sofia", "everyone say hi to @$myHandle. they're new. be normal.\n— nobody be normal", 3, 27, 6, base),
         seed(
             "p2", "sofia",
             "i know three people who are secretly at the same wedding right now and i'm not there. the FOMO is structural.",

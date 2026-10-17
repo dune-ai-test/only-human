@@ -46,6 +46,69 @@ object Voices {
         return pool?.random(rng) ?: replies.random(rng)
     }
 
+    /** A DM out of the blue — the first private message they ever send you. */
+    fun dmOpen(id: String, rng: Random): String {
+        val pool = dmOpens[id]
+        return pool?.random(rng) ?: genericDmOpens.random(rng)
+    }
+
+    /** A short DM back, when you message one of them. */
+    fun dmReply(id: String, rng: Random): String {
+        val pool = dmReplies[id]
+        return pool?.random(rng) ?: genericDmReplies.random(rng)
+    }
+
+    private val genericDmOpens = listOf(
+        "hey. you're the new neighbor, right?",
+        "hi. just checking you actually exist.",
+        "hello. this is me sliding into your DMs, but politely.",
+    )
+
+    private val genericDmReplies = listOf(
+        "ha. fair.",
+        "mmhm. go on.",
+        "yeah, i hear that.",
+        "noted. keep talking.",
+        "okay, i wasn't expecting a good answer.",
+    )
+
+    /** Openers and replies per persona — same person as their posts, quieter room. */
+    private val dmOpens: Map<String, List<String>> = mapOf(
+        "sofia" to listOf("OK HI. i was told to be normal and i am choosing not to be!! how are you finding it here so far??"),
+        "maya" to listOf("hey. you're the new one. sofia is about to make this very weird, i apologize in advance."),
+        "jordan" to listOf("yo. quick test — does this app actually have DMs or am i writing into the void"),
+        "lena" to listOf("the light where you are must be nice today. hello."),
+        "theo" to listOf("welcome to my DMs. it's like my posts but with less moderation."),
+        "priya" to listOf("hi!! urgent question: how do you feel about dal. answers will be judged."),
+        "sam" to listOf("hey. early here. you're the new one, right?"),
+        "nina" to listOf("you exist. i checked. weird how that works at night."),
+        "marcus" to listOf("hi. quick log entry: new neighbor detected. that's all."),
+        "elena" to listOf("hii! biscuit says hi (i'm translating). welcome :)."),
+        "kai" to listOf("hello."),
+        "dev" to listOf("hi. i've been thinking about why new neighbors make everyone nervous. anyway. hi."),
+        "alice" to listOf("HI. urgent. greg the plant and i have a bet going about you. no further questions!!"),
+        "ben" to listOf("hey! it's a good place here. quiet. that's the pitch."),
+        "rosa" to listOf("hello. elena says you're kind. i trust her about people."),
+    )
+
+    private val dmReplies: Map<String, List<String>> = mapOf(
+        "sofia" to listOf("ok you can't just SAY that and leave!! details. now.", "this is going in the group chat. lovingly."),
+        "maya" to listOf("hm. yeah. i think about that too, actually.", "ok that's a great point and i'm mildly annoyed about it"),
+        "jordan" to listOf("ha. noted.", "ok that's a lyric. don't fight me on it."),
+        "lena" to listOf("yes. exactly that.", "i'll look for it tomorrow."),
+        "theo" to listOf("bold of you to be correct on the first try.", "where did you even come from. no one's this reasonable."),
+        "priya" to listOf("correct answer.", "ok you're getting a recipe and you cannot stop me."),
+        "sam" to listOf("good answer.", "agreed. keeping it simple is underrated."),
+        "nina" to listOf("you write like someone who sleeps. teach me.", "keeping this one. filed under 3am."),
+        "marcus" to listOf("correct. noted in the log.", "that's the whole comment. thanks."),
+        "elena" to listOf("biscuit approves of this message.", "that's really kind, honestly."),
+        "kai" to listOf("yes.", "hm."),
+        "dev" to listOf("that's the whole thesis, actually.", "you skipped two chapters of my reasoning and landed exactly on the end."),
+        "alice" to listOf("ohmigod VALID", "greg was RIGHT???"),
+        "ben" to listOf("oh that actually helps, thanks.", "man. yeah. that's the whole thing, isn't it."),
+        "rosa" to listOf("mm. yes.", "that's the kindest way anyone's put it."),
+    )
+
     /** One-line replies, in voice, for when you talk back. */
     private val backReplies: Map<String, List<String>> = mapOf(
         "sofia" to listOf("OK this. this is exactly what i mean!!"),

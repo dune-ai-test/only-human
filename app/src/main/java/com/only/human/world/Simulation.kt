@@ -24,8 +24,12 @@ object Simulation {
         /** Personas who started following you. */
         val followsYou = mutableMapOf<String, Boolean>()
 
+        /** Private messages that arrived while you were away. */
+        val dms = mutableListOf<Dm>()
+
         val isEmpty: Boolean
-            get() = posts.isEmpty() && edited.isEmpty() && activities.isEmpty() && followsYou.isEmpty()
+            get() = posts.isEmpty() && edited.isEmpty() && activities.isEmpty() &&
+                followsYou.isEmpty() && dms.isEmpty()
     }
 
     /** How chatty each of them is, relative to the others. */
@@ -37,12 +41,14 @@ object Simulation {
     /**
      * [from] — when you left. [to] — now, when you came back.
      * [followedYou] — personaId -> do they already follow you.
+     * [myHandle] — your username, so mentions say the right name.
      */
     fun catchUp(
         from: Long,
         to: Long,
         allPosts: List<Post>,
         followedYou: Map<String, Boolean>,
+        myHandle: String,
         rng: Random,
     ): Result {
         val result = Result()
@@ -154,7 +160,7 @@ object Simulation {
             result.posts += Post(
                 id = "sim-mention-${at}-${who.id}",
                 authorId = who.id,
-                text = Voices.mention(rng),
+                text = Voices.mention(rng).replace("@you", "@$myHandle"),
                 createdAt = at,
                 likes = 6 + rng.nextInt(30) + who.followerBoost / 30,
                 replies = rng.nextInt(3),
@@ -167,6 +173,31 @@ object Simulation {
                 createdAt = at,
                 kind = ActivityKind.Mention,
             )
+        }
+
+        // --- a message or two: not everything belongs in public
+        var sends = 0
+        for (p in Cast.people.shuffled(rng)) {
+            if (sends >= 2) break
+            val chance = (0.10 + (hours / 100.0)).coerceAtMost(0.45)
+            if (rng.nextDouble() > chance) continue
+            val at = (from + gap * (0.3 + 0.6 * rng.nextDouble())).toLong()
+            result.dms += Dm(
+                id = "sim-dm-$at-${p.id}",
+                personaId = p.id,
+                fromMe = false,
+                text = Voices.dmOpen(p.id, rng),
+                at = at,
+            )
+            result.activities += ActivityItem(
+                id = "sim-dm-a-$at-${p.id}",
+                personaId = p.id,
+                boldPart = p.name,
+                rest = " sent you a message",
+                createdAt = at,
+                kind = ActivityKind.Message,
+            )
+            sends++
         }
 
         result.edited += touched.mapNotNull { updated[it] }

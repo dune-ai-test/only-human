@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -23,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.only.human.design.colors
 import com.only.human.design.components.Hairline
 import com.only.human.design.components.IOSBackButton
+import com.only.human.design.components.IOSFilledButton
 import com.only.human.design.components.IOSFollowButton
 import com.only.human.design.components.LargeTitleHeader
 import com.only.human.design.components.LargeTitleScaffold
@@ -39,6 +39,7 @@ fun ProfileScreen(
     personaId: String,
     onBack: () -> Unit,
     onOpenPost: (String) -> Unit,
+    onOpenDm: (String) -> Unit,
 ) {
     val persona = Cast.byId(personaId)
     val listState = rememberLazyListState()
@@ -59,7 +60,7 @@ fun ProfileScreen(
             ),
         ) {
             item(key = "title") { LargeTitleHeader(persona.name) }
-            item(key = "card") { ProfileCard(persona) }
+            item(key = "card") { ProfileCard(persona, onOpenDm) }
             item(key = "posts-label") {
                 Text(
                     "Posts",
@@ -77,7 +78,7 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun ProfileCard(persona: Persona) {
+private fun ProfileCard(persona: Persona, onOpenDm: (String) -> Unit) {
     val c = colors
     val t = type
 
@@ -99,10 +100,17 @@ private fun ProfileCard(persona: Persona) {
         }
         Spacer(Modifier.height(14.dp))
         if (persona.id != "you") {
-            IOSFollowButton(
-                following = World.following[persona.id] == true,
-                onClick = { World.toggleFollow(persona.id) },
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                IOSFollowButton(
+                    following = World.following[persona.id] == true,
+                    onClick = { World.toggleFollow(persona.id) },
+                )
+                IOSFilledButton(
+                    text = "Message",
+                    onClick = { onOpenDm(persona.id) },
+                    compact = true,
+                )
+            }
         }
         Spacer(Modifier.height(14.dp))
         Text(
