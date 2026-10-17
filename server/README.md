@@ -45,7 +45,46 @@ the app, no assets, no build step:
 World data is only ever moved through the authenticated `POST /v1/sync` and
 `POST /v1/act`, so the public pages expose nothing.
 
-## Deploy (once)
+## Deploy (once) — the dashboard way (no CLI)
+
+Everything happens on dash.cloudflare.com and github.com; the same account
+owns the database and the Worker. Free plan is fine.
+
+1. **Create the database.** *Storage & Databases → D1 SQL database → Create
+   database* → name it `only-human-worlds`. Open it and copy the **Database
+   ID** (a UUID) from its page.
+2. **Create the tables.** In the database, open the **Console** tab, paste
+   the whole of `server/schema.sql`, and Execute. The Tables tab should now
+   list them all (`worlds`, `personas`, `posts`, `replies`, `stories`,
+   `dms`, `comment_asks`, `follows`, `activity`, `outbox`, `jobs`,
+   `commands`, …). If the console complains, re-run without the `--`
+   comment lines — every statement is `IF NOT EXISTS`, so running it twice
+   is harmless.
+3. **Wire the database into the config.** On github.com, edit
+   `server/wrangler.toml` on the `world-server` branch (pencil icon) and
+   replace the placeholder `database_id` with the real UUID. Commit
+   directly to `world-server`.
+4. **Create the Worker from the repo.** Cloudflare dashboard → *Workers &
+   Pages → Create application → Get started next to "Import a repository"*
+   → connect GitHub → pick `dune-ai-test/only-human`, then set:
+   - Project name: `only-human-worlds` (must match `name` in wrangler.toml)
+   - Production branch: `world-server`
+   - Build command: leave empty
+   - Deploy command: `npx wrangler deploy`
+   - Root directory: `server` (under the advanced/build settings)
+
+   Save and Deploy. The build log ends with the live URL —
+   `https://only-human-worlds.<you>.workers.dev`. From then on, every push
+   to `world-server` redeploys automatically (pushes to `main` do not).
+5. **Check it's alive.** Open the URL (the landing page shows), then
+   `/v1/health` (tiny JSON, `"ok": true`). The minute heartbeat runs on its
+   own — the Worker's Logs show a scheduled event every minute.
+
+Then connect the app: Settings → World server → paste the URL → "Create the
+world". The landing page confirms the server is awake; `/w` opens the
+console window.
+
+### …or with wrangler (if you prefer the CLI)
 
 ```sh
 cd server
@@ -57,9 +96,6 @@ npm run schema:remote
 npx wrangler deploy
 curl https://only-human-worlds.<you>.workers.dev/v1/health
 ```
-
-Then open `https://only-human-worlds.<you>.workers.dev/` in a browser — the
-landing page confirms the server is awake; `/w` opens the console window.
 
 No secrets needed with the default keyless model
 (`poolside/laguna-s-2.1:free` on the Kilo gateway). A per-world custom

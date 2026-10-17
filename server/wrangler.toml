@@ -13,7 +13,8 @@ crons = ["* * * * *"]
 DEFAULT_ENDPOINT = "https://api.kilo.ai/api/gateway"
 DEFAULT_MODEL = "poolside/laguna-s-2.1:free"
 
-# Replace database_id with the one `wrangler d1 create only-human-worlds` prints.
+# Replace database_id with the one from the dashboard (D1 → only-human-worlds
+# → Database ID) or from `wrangler d1 create only-human-worlds`.
 [[d1_databases]]
 binding = "DB"
 database_name = "only-human-worlds"
