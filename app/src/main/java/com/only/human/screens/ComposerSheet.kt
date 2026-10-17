@@ -106,7 +106,7 @@ fun ComposerSheet(
             Spacer(Modifier.height(16.dp))
 
             Row(Modifier.fillMaxWidth()) {
-                MonogramAvatar(you.gradient, "Y", 40.dp)
+                MonogramAvatar(you.gradient, you.initials, 40.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
