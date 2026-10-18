@@ -18,7 +18,15 @@ export default {
 
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (req.method === "GET" && url.pathname === "/v1/health") {
-      return json({ ok: true, t: Date.now() });
+      // Also proves the D1 binding is in place: the dashboard setup check.
+      let db = false;
+      try {
+        await env.DB.prepare("SELECT 1").first();
+        db = true;
+      } catch {
+        db = false;
+      }
+      return json({ ok: true, db, t: Date.now() });
     }
     // The site: a quiet landing page, and the console window into a world.
     if (req.method === "GET" || req.method === "HEAD") {

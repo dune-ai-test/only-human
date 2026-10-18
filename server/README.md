@@ -12,7 +12,6 @@ This folder is the implementation.
 
 ```
 server/
-  wrangler.toml        worker config: cron heartbeat, D1 binding, model defaults
   schema.sql           the whole D1 schema (run once per database)
   src/
     index.ts           fetch router + scheduled heartbeat
@@ -25,6 +24,11 @@ server/
     util.ts            ids, recovery keys, world-local time
   scripts/smoke.mjs    end-to-end smoke test against a running worker
 ```
+
+No Wrangler config ships in the repo: the deployed Worker is configured
+in the Cloudflare **dashboard** (D1 binding, variables, the cron) and
+deploys ship only code. Local dev uses an untracked `wrangler.local.toml`
+— see [Local dev](#local-dev).
 
 ## The site
 
@@ -50,52 +54,65 @@ World data is only ever moved through the authenticated `POST /v1/sync` and
 Everything happens on dash.cloudflare.com and github.com; the same account
 owns the database and the Worker. Free plan is fine.
 
+There is deliberately no `wrangler.toml` in this repo. A config-less
+`wrangler deploy` ships **code only**: the D1 binding, the model defaults
+and the cron heartbeat live in the Worker's dashboard **Settings** and are
+never overwritten by deploys.
+
 1. **Create the database.** *Storage & Databases → D1 SQL database → Create
-   database* → name it `only-human-worlds`. Open it and copy the **Database
-   ID** (a UUID) from its page.
-2. **Create the tables.** In the database, open the **Console** tab, paste
-   the whole of `server/schema.sql`, and Execute. The Tables tab should now
+   database* → name it `only-human-worlds` (no ID to copy — the binding in
+   step 4 picks it from a list).
+2. **Create the tables.** Open the database → **Console** tab → paste the
+   whole of `server/schema.sql` → Execute. The **Tables** tab should then
    list them all (`worlds`, `personas`, `posts`, `replies`, `stories`,
    `dms`, `comment_asks`, `follows`, `activity`, `outbox`, `jobs`,
    `commands`, …). If the console complains, re-run without the `--`
    comment lines — every statement is `IF NOT EXISTS`, so running it twice
    is harmless.
-3. **Wire the database into the config.** On github.com, edit
-   `server/wrangler.toml` on the `world-server` branch (pencil icon) and
-   replace the placeholder `database_id` with the real UUID. Commit
-   directly to `world-server`.
-4. **Create the Worker from the repo.** Cloudflare dashboard → *Workers &
+3. **Create the Worker from the repo.** Cloudflare dashboard → *Workers &
    Pages → Create application → Get started next to "Import a repository"*
    → connect GitHub → pick `dune-ai-test/only-human`, then set:
-   - Project name: `only-human-worlds` (must match `name` in wrangler.toml)
+   - Project name: `only-human-worlds`
    - Production branch: `world-server`
    - Build command: leave empty
-   - Deploy command: `npx wrangler deploy`
+   - Deploy command: `npx wrangler deploy src/index.ts --name only-human-worlds --compatibility-date 2026-10-18 --keep-vars`
    - Root directory: `server` (under the advanced/build settings)
 
    Save and Deploy. The build log ends with the live URL —
    `https://only-human-worlds.<you>.workers.dev`. From then on, every push
    to `world-server` redeploys automatically (pushes to `main` do not).
-5. **Check it's alive.** Open the URL (the landing page shows), then
-   `/v1/health` (tiny JSON, `"ok": true`). The minute heartbeat runs on its
-   own — the Worker's Logs show a scheduled event every minute.
+4. **Bind the database.** Worker → **Settings → Bindings → Add binding →
+   D1 database**: variable name `DB`, database `only-human-worlds`. Save.
+   (If `db` stays `false` in step 7, run any deploy — *Deployments →
+   Retry latest* — and re-check.)
+5. **Model defaults.** **Settings → Variables and Secrets** — two *text*
+   variables: `DEFAULT_ENDPOINT` = `https://api.kilo.ai/api/gateway` and
+   `DEFAULT_MODEL` = `poolside/laguna-s-2.1:free`. `--keep-vars` in the
+   deploy command means deploys never touch them.
+6. **Heartbeat.** **Settings → Triggers → Cron Triggers** → add
+   `* * * * *`.
+7. **Check it's alive.** Open the URL (the landing page shows), then
+   `/v1/health` — expect `"ok":true,"db":true`. The Worker's Logs show a
+   scheduled event every minute.
 
 Then connect the app: Settings → World server → paste the URL → "Create the
 world". The landing page confirms the server is awake; `/w` opens the
 console window.
 
-### …or with wrangler (if you prefer the CLI)
+### …or with wrangler (if you ever prefer the CLI)
+
+The database (steps 1–2) still comes from the dashboard. For the Worker
+itself you can skip the Git connection entirely — a config-less
+`wrangler deploy` creates and deploys it:
 
 ```sh
 cd server
 npm install
 npx wrangler login
-npx wrangler d1 create only-human-worlds
-# paste the printed database_id into wrangler.toml
-npm run schema:remote
-npx wrangler deploy
-curl https://only-human-worlds.<you>.workers.dev/v1/health
+npm run deploy
 ```
+
+Bindings, variables and the cron are added in the dashboard (steps 4–6).
 
 No secrets needed with the default keyless model
 (`poolside/laguna-s-2.1:free` on the Kilo gateway). A per-world custom
@@ -103,18 +120,38 @@ endpoint/model/key can be added to the `worlds` row later for BYO users.
 
 ## Local dev
 
+Local dev needs a Wrangler config, which the repo does not carry. Create
+`server/wrangler.local.toml` once (it is gitignored; the dummy
+`database_id` is fine against the local D1):
+
+```toml
+name = "only-human-worlds"
+main = "src/index.ts"
+compatibility_date = "2026-10-18"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+DEFAULT_ENDPOINT = "https://api.kilo.ai/api/gateway"
+DEFAULT_MODEL = "poolside/laguna-s-2.1:free"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "only-human-worlds"
+database_id = "00000000-0000-0000-0000-000000000000"
+```
+
+Then:
+
 ```sh
 npm run schema:local     # creates the local D1 with the schema
-npx wrangler dev --test-scheduled   # http://127.0.0.1:8787
+npm run dev              # http://127.0.0.1:8787
 node scripts/smoke.mjs http://127.0.0.1:8787 --pulse   # creates a world, posts, approves an ask
 ```
 
-To fire the every-minute heartbeat by hand:
-
-```sh
-npx wrangler dev --test-scheduled
-curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"
-```
+To fire the every-minute heartbeat by hand: `npm run dev -- --test-scheduled`,
+then `curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"`.
 
 ## The API (as agreed)
 

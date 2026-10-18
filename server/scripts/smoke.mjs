@@ -1,7 +1,7 @@
 // Smokes the world API end to end against a running worker.
 //   # another terminal, in server/:
 //   npm run schema:local
-//   npx wrangler dev --test-scheduled
+//   npm run dev -- --test-scheduled
 //   node scripts/smoke.mjs http://127.0.0.1:8787 --pulse
 //
 // --pulse also hits /__scheduled between syncs so the every-minute heartbeat
@@ -58,7 +58,12 @@ async function post(path, body) {
   return { status: res.status, data };
 }
 
-console.log("health:", await (await fetch(`${base}/v1/health`)).json());
+const health = await (await fetch(`${base}/v1/health`)).json();
+console.log("health:", health);
+if (!health.ok || !health.db) {
+  console.error("health check failed - is the D1 binding in place?");
+  process.exit(1);
+}
 
 // The site: the landing answers, and the console window is there to open.
 const home = await fetch(`${base}/`);

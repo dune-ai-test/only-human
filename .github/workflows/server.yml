@@ -27,4 +27,4 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: npx wrangler deploy --dry-run --outdir=dist
+      - run: npm run dry

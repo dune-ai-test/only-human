@@ -3,12 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --config wrangler.local.toml",
+    "deploy": "wrangler deploy src/index.ts --name only-human-worlds --compatibility-date 2026-10-18 --keep-vars",
     "typecheck": "tsc --noEmit",
-    "dry": "wrangler deploy --dry-run --outdir=dist",
-    "schema:local": "wrangler d1 execute only-human-worlds --local --file=schema.sql",
-    "schema:remote": "wrangler d1 execute only-human-worlds --remote --file=schema.sql"
+    "dry": "wrangler deploy src/index.ts --dry-run --outdir=dist --name only-human-worlds --compatibility-date 2026-10-18",
+    "schema:local": "wrangler d1 execute only-human-worlds --local --file=schema.sql --config wrangler.local.toml"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.0.0",
