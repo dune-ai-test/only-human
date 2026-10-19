@@ -17,18 +17,18 @@ export interface Turn {
 }
 
 /**
- * One chat completion for [world]. Returns the sanitized line, or null.
+ * One chat completion for [world]. Returns the raw trimmed text, or null.
  * [ambient] writes (the world living on its own) stop at 80% of the daily
  * budget so anything the human drives always has the last calls.
  */
-export async function writeChat(
+async function complete(
   env: Env,
   world: WorldRow,
   system: string,
   turns: Turn[],
   maxTokens: number,
   personaModel: string | null,
-  ambient = false,
+  ambient: boolean,
 ): Promise<string | null> {
   if (world.calls_today >= world.daily_budget) return null;
   if (ambient && world.calls_today >= Math.floor(world.daily_budget * 0.8)) return null;
@@ -68,7 +68,7 @@ export async function writeChat(
       const data = JSON.parse(text) as { choices?: { message?: { content?: string } }[] };
       const content = data.choices?.[0]?.message?.content?.trim();
       if (!content || content === "null") return null;
-      return sanitize(content);
+      return content;
     } catch (e) {
       // A dropped connection is worth another try, same as the app.
       console.log("engine net", String(e).slice(0, 140));
@@ -76,4 +76,37 @@ export async function writeChat(
   }
   console.log("engine gave up for world", world.id, "at", now());
   return null;
+}
+
+/** A written line for the feed: one short piece of text, sanitized. */
+export async function writeChat(
+  env: Env,
+  world: WorldRow,
+  system: string,
+  turns: Turn[],
+  maxTokens: number,
+  personaModel: string | null,
+  ambient = false,
+): Promise<string | null> {
+  const content = await complete(env, world, system, turns, maxTokens, personaModel, ambient);
+  return content === null ? null : sanitize(content);
+}
+
+/**
+ * Text that must keep its structure (presence JSON, batches). Same budget
+ * rules, no single-line truncation — just a sane ceiling so a runaway reply
+ * can't fill the database.
+ */
+export async function writeRaw(
+  env: Env,
+  world: WorldRow,
+  system: string,
+  turns: Turn[],
+  maxTokens: number,
+  personaModel: string | null,
+  ambient = false,
+): Promise<string | null> {
+  const content = await complete(env, world, system, turns, maxTokens, personaModel, ambient);
+  if (content === null) return null;
+  return content.length <= 6000 ? content : content.slice(0, 6000);
 }

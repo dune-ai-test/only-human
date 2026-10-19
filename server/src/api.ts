@@ -21,6 +21,7 @@ import {
   schedule,
   setFollow,
 } from "./db";
+import { getPresence } from "./presence";
 import type { AskRow, Env, PostRow, ReplyRow, WorldRow } from "./types";
 import { clamp, dayKey, hashKey, newId, newRecoveryKey, now, QUIET_FROM_MIN, QUIET_TO_MIN, randInt, sameHash, json } from "./util";
 
@@ -518,6 +519,20 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
     default:
       return json({ error: "unknown action" }, 400);
   }
+}
+
+// ---- presence ------------------------------------------------------------
+
+export async function handlePresence(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const world = await authenticate(env, body);
+  if (!world) return json({ error: "unauthorized" }, 401);
+  const personaId = str(body["personaId"]).trim();
+  const presence = await getPresence(env, world, {
+    personaId: personaId || undefined,
+    force: body["force"] === true,
+    debug: body["debug"] === true,
+  });
+  return json(presence);
 }
 
 // ---- export / delete -----------------------------------------------------

@@ -66,6 +66,7 @@ const CSS = `
   }
 }
 *, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -220,6 +221,10 @@ body.plain .bar { background: var(--bar-plain); }
   -webkit-tap-highlight-color: transparent;
 }
 .seg-btn.on { background: var(--seg-on); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+@media (max-width: 430px) {
+  .seg { gap: 1px; }
+  .seg-btn { font-size: 11.5px; letter-spacing: -.2px; }
+}
 
 /* console: composer */
 .compose { padding: 12px 16px 12px; }
@@ -319,6 +324,7 @@ body.plain .bar { background: var(--bar-plain); }
 }
 .av.sm { width: 28px; height: 28px; font-size: 11px; letter-spacing: .2px; }
 .av.md { width: 36px; height: 36px; font-size: 14px; }
+.av.lg { width: 56px; height: 56px; font-size: 20px; }
 .post-body { flex: 1; min-width: 0; }
 .post-body header { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
 .name { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.41px; }
@@ -399,6 +405,7 @@ body.plain .bar { background: var(--bar-plain); }
 .person + .person { border-top: .5px solid var(--sep); }
 .person-main { flex: 1; min-width: 0; }
 .person-bio { margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.person-bio .place-ic { vertical-align: -2px; margin-right: 3px; color: var(--label3); }
 .follow-btn {
   flex: none; height: 32px; padding: 0 15px;
   border: 0; border-radius: 999px;
@@ -412,10 +419,101 @@ body.plain .bar { background: var(--bar-plain); }
   .follow-btn.off { background: rgba(10, 132, 255, 0.18); }
 }
 
+/* console: now — where everyone is */
+.now-head { display: flex; align-items: flex-end; gap: 12px; margin: 2px 2px 4px; }
+.now-head-main { flex: 1; min-width: 0; }
+.now-head h2 { margin: 0; }
+.now-sub { margin-top: 2px; }
+.now-head .mini { height: 30px; padding: 0 13px; font-size: 13px; }
+.now-sec { margin-top: 16px; }
+.now-k {
+  display: flex; align-items: baseline; gap: 6px;
+  margin: 0 2px 7px;
+  font-size: 12px; line-height: 16px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--label3);
+}
+.now-count { font-weight: 500; letter-spacing: 0; text-transform: none; }
+.now-row {
+  display: flex; gap: 12px; padding: 13px 16px; align-items: center;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.now-row + .now-row { border-top: .5px solid var(--sep); }
+.now-row:active { background: var(--press); }
+.now-main { flex: 1; min-width: 0; }
+.now-doing { margin-top: 2px; font-size: 15px; line-height: 20px; letter-spacing: -.24px; overflow-wrap: anywhere; }
+.now-doing.dim { color: var(--label2); }
+.now-meta {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 4px; min-width: 0;
+  font-size: 13px; line-height: 18px; letter-spacing: -.08px;
+  color: var(--label2);
+}
+.now-where { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.now-age { margin-left: auto; flex: none; color: var(--label3); }
+.now-asleep .now-doing, .now-asleep .now-meta { color: var(--label2); }
+.now-asleep .av { opacity: .65; }
+.place-ic { display: inline-flex; flex: none; color: var(--label3); }
+.place-ic svg { display: block; }
+.now-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 44px 0 36px; }
+.now-loading .spin { width: 14px; height: 14px; }
+
+/* console: a person, as a sheet */
+.sheet { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.sheet-back {
+  position: absolute; inset: 0;
+  background: rgba(0, 0, 0, .34);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+.sheet-card {
+  position: relative; width: 100%; max-width: 560px; max-height: 88vh; overflow: auto;
+  background: var(--bg); color: var(--label);
+  border-radius: 20px 20px 0 0;
+  padding: 8px 20px 22px;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, .18);
+  animation: sheetup .28s cubic-bezier(.2, .7, .2, 1);
+  -webkit-overflow-scrolling: touch;
+}
+@keyframes sheetup { from { transform: translateY(26px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .sheet-card { animation: none; } }
+@media (min-width: 620px) {
+  .sheet { align-items: center; padding: 24px; }
+  .sheet-card { border-radius: 20px; max-height: 82vh; padding: 18px 24px 24px; }
+}
+.sheet-grab { width: 36px; height: 5px; border-radius: 3px; background: var(--sep); margin: 0 auto 10px; }
+@media (min-width: 620px) { .sheet-grab { display: none; } }
+.sheet-head { display: flex; align-items: flex-start; gap: 12px; }
+.sheet-title { flex: 1; min-width: 0; padding-top: 1px; }
+.sheet-name { margin: 0; font-size: 22px; line-height: 27px; font-weight: 700; letter-spacing: -.4px; }
+.sheet-handle { margin-top: 1px; }
+.sheet-meta { margin-top: 1px; }
+.sheet-x {
+  flex: none; width: 32px; height: 32px; margin-top: 2px;
+  border: 0; border-radius: 50%; background: var(--card2); color: var(--label2);
+  font-size: 20px; line-height: 1; cursor: pointer;
+}
+.sheet-now { margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: var(--card2); }
+.sheet-now-top { display: flex; gap: 10px; align-items: flex-start; }
+.sheet-now-top .place-ic { margin-top: 4px; color: var(--label2); }
+.sheet-doing { font-size: 17px; line-height: 23px; letter-spacing: -.3px; }
+.sheet-now-meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 13px; line-height: 18px; color: var(--label2); }
+.sheet-now-meta .linkbtn { margin-left: auto; padding: 0; font-size: 13px; }
+.sheet-bio { margin: 14px 2px 0; }
+.sheet-sec { margin-top: 20px; }
+.sheet-k { margin: 0 2px 6px; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--label3); }
+.sheet-post { padding: 9px 2px; border-top: .5px solid var(--sep); }
+.sheet-post:first-child { border-top: 0; padding-top: 2px; }
+.sheet-post .sp-t { font-size: 15px; line-height: 20px; letter-spacing: -.24px; }
+.sheet-post .sp-m { margin-top: 2px; }
+.sheet-actions { display: flex; gap: 8px; margin-top: 20px; }
+.sheet-actions .mini { flex: 1; height: 44px; }
+
 /* console: footer + misc */
 .feed-foot { text-align: center; margin-top: 36px; padding-top: 20px; border-top: .5px solid var(--sep); }
 .feed-foot .linkbtn { margin-top: 10px; }
 .linkbtn { border: 0; background: none; color: var(--accent); padding: 6px 10px; cursor: pointer; }
+.linkbtn[disabled] { opacity: .45; pointer-events: none; }
 .quiet { text-align: center; padding: 56px 0 40px; }
 .quiet .sub { margin-top: 4px; color: var(--label2); }
 .newpill {
@@ -535,6 +633,24 @@ const WINDOW_JS = `
   var GRAY = ['#8E8E93', '#636366'];
   var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var PLACE_LABEL = {
+    home: 'at home', work: 'at work', cafe: 'at a café', library: 'at the library',
+    park: 'in the park', street: 'out', transit: 'in transit', shop: 'at the shop',
+    outdoors: 'outside', asleep: 'in bed', elsewhere: 'somewhere'
+  };
+  var PLACE_ICON = {
+    home: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10.5 12 3l8.5 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-6h5v6"/></svg>',
+    work: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>',
+    cafe: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9Z"/><path d="M16 10h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M7 5.5c0-1 1-1 1-2M11 5.5c0-1 1-1 1-2"/></svg>',
+    library: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4v16H5z"/><path d="M9 4h4v16H9z"/><path d="m13 5.5 4-1.5 4 16-4 1.5z"/></svg>',
+    park: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 6 12h12L12 3Z"/><path d="M12 12v9"/><path d="M9 21h6"/></svg>',
+    street: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21 11 3M16 21 13 3"/><path d="M12 7v2M12 12v2M12 17v2"/></svg>',
+    transit: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="13" rx="2"/><path d="M5 10h14"/><path d="M8 17v3M16 17v3"/><circle cx="8.5" cy="14" r="1"/><circle cx="15.5" cy="14" r="1"/></svg>',
+    shop: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 13H6L5 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>',
+    outdoors: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 9 8l4 7 3-4 5 9H3Z"/></svg>',
+    asleep: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>',
+    elsewhere: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg>'
+  };
 
   // ---- state --------------------------------------------------------------
   var state = {
@@ -548,6 +664,8 @@ const WINDOW_JS = `
     outbox: [],
     drafts: {},
     times: [],
+    presence: {}, presenceAt: 0, presenceBusy: false, presenceError: false,
+    sheet: null, wantSheet: null,
     tab: 'feed', thread: null,
     replyOpen: null, focusReply: null, focusDm: false, wantPersona: null,
     newCount: 0
@@ -664,6 +782,19 @@ const WINDOW_JS = `
     av.style.setProperty('--g2', g[1]);
     return av;
   }
+  function placeGlyph(place) {
+    var n = el('span', 'place-ic');
+    n.innerHTML = PLACE_ICON[place] || PLACE_ICON.elsewhere;
+    n.setAttribute('aria-hidden', 'true');
+    return n;
+  }
+  function presenceGroup(p) {
+    if (!p) return 'unknown';
+    if (p.place === 'asleep') return 'asleep';
+    if (p.place === 'home') return 'home';
+    if (p.place === 'work') return 'work';
+    return 'out';
+  }
 
   // ---- api ----------------------------------------------------------------
   function act(action, payload, cmd) {
@@ -681,6 +812,17 @@ const WINDOW_JS = `
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ worldId: state.world, key: state.key, cursor: cursor })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        return { status: res.status, data: data };
+      });
+    });
+  }
+  function presenceApi(body) {
+    return fetch('/v1/presence', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         return { status: res.status, data: data };
@@ -1323,6 +1465,7 @@ const WINDOW_JS = `
   }
 
   function openThread(personaId) {
+    closePerson();
     state.thread = personaId;
     state.tab = 'dms';
     switchTab('dms');
@@ -1411,6 +1554,213 @@ const WINDOW_JS = `
     });
   }
 
+  // ---- presence -----------------------------------------------------------
+  function fetchPresence(force, only) {
+    if (state.presenceBusy || !state.world || !state.everSynced) return;
+    state.presenceBusy = true;
+    state.presenceError = false;
+    render();
+    var body = { worldId: state.world, key: state.key };
+    if (force) body.force = true;
+    if (only) body.personaId = only;
+    presenceApi(body).then(function (r) {
+      state.presenceBusy = false;
+      if (r.status === 200 && Array.isArray(r.data.people)) {
+        r.data.people.forEach(function (p) { if (p && p.id) state.presence[p.id] = p; });
+        if (!only) state.presenceAt = Date.now();
+      } else {
+        state.presenceError = true;
+      }
+      render();
+    }).catch(function () {
+      state.presenceBusy = false;
+      state.presenceError = true;
+      render();
+    });
+  }
+  function ensurePresence(force) {
+    if (!state.everSynced) return;
+    if (force || !state.presenceAt || Date.now() - state.presenceAt > 60000) {
+      fetchPresence(!!force);
+    }
+  }
+
+  function openPerson(id) {
+    if (!state.personas[id]) return;
+    state.sheet = id;
+    document.body.style.overflow = 'hidden';
+    $('sheet').hidden = false;
+    renderSheet();
+    var p = state.presence[id];
+    if (!p || Date.now() - p.at > 15 * 60000) fetchPresence(false, id);
+  }
+  function closePerson() {
+    if (!state.sheet) return;
+    state.sheet = null;
+    document.body.style.overflow = '';
+    $('sheet').hidden = true;
+  }
+
+  function nowRow(id, p) {
+    var who = persona(id);
+    var raw = state.personas[id] || {};
+    var row = el('div', 'now-row' + (p && p.place === 'asleep' ? ' now-asleep' : ''));
+    row.appendChild(avatarEl(who, 'md'));
+    var main = el('div', 'now-main');
+    main.appendChild(el('div', 'name', who.name));
+    if (p) {
+      main.appendChild(el('div', 'now-doing', p.doing));
+      var meta = el('div', 'now-meta');
+      meta.appendChild(placeGlyph(p.place));
+      meta.appendChild(el('span', 'now-where',
+        (PLACE_LABEL[p.place] || 'somewhere') + (raw.location ? ' \u00b7 ' + raw.location : '')));
+      var age = el('span', 'now-age t-foot num', ago(p.at));
+      state.times.push({ el: age, at: p.at, prefix: '' });
+      meta.appendChild(age);
+      main.appendChild(meta);
+    } else {
+      main.appendChild(el('div', 'now-doing dim', 'No word right now.'));
+      var m2 = el('div', 'now-meta');
+      var bits = [];
+      if (raw.occupation) bits.push(raw.occupation);
+      if (raw.location) bits.push(raw.location);
+      m2.appendChild(el('span', 'now-where', bits.join(' \u00b7 ') || 'somewhere in the world'));
+      main.appendChild(m2);
+    }
+    row.appendChild(main);
+    row.addEventListener('click', function () { openPerson(id); });
+    return row;
+  }
+
+  function renderNow() {
+    var host = $('now');
+    if (!host) return;
+    host.textContent = '';
+    var ids = Object.keys(state.personas);
+    var groups = { out: [], work: [], home: [], asleep: [], unknown: [] };
+    ids.forEach(function (id) { groups[presenceGroup(state.presence[id])].push(id); });
+    var have = ids.some(function (id) { return !!state.presence[id]; });
+    var busy = state.presenceBusy;
+    $('now-loading').hidden = !(busy && !have);
+    $('now-empty').hidden = !(!busy && !have);
+    $('now-refresh').disabled = busy;
+    if (!have) {
+      $('now-empty-t').textContent = state.presenceError ? 'No one answered.' : 'No one is saying where they are.';
+      $('now-empty-s').textContent = state.presenceError
+        ? 'The server stayed quiet. Try Refresh in a moment.'
+        : 'They are not saying where they are right now.';
+    }
+    var sub = $('now-sub');
+    if (busy) sub.textContent = have ? 'looking around again\u2026' : 'looking around\u2026';
+    else if (state.presenceError && !have) sub.textContent = 'could not see them just now';
+    else if (have && state.presenceAt) {
+      var age = ago(state.presenceAt);
+      sub.textContent = (age === 'now' ? 'updated just now' : 'updated ' + age + ' ago') + ' \u00b7 ' + ids.length + ' people';
+    } else sub.textContent = 'where everyone is, at this minute';
+    if (!have) return;
+
+    [['out', 'Out & about'], ['work', 'Working'], ['home', 'At home'], ['asleep', 'Asleep'], ['unknown', 'No word']].forEach(function (l) {
+      var arr = groups[l[0]];
+      if (!arr.length) return;
+      arr.sort(function (a, b) {
+        var pa = state.presence[a], pb = state.presence[b];
+        var da = pa ? pa.at : 0, db = pb ? pb.at : 0;
+        if (da !== db) return db - da;
+        return String(state.personas[a].name).localeCompare(String(state.personas[b].name));
+      });
+      var sec = el('section', 'now-sec');
+      var head = el('h2', 'now-k');
+      head.appendChild(el('span', null, l[1]));
+      head.appendChild(el('span', 'now-count', ' \u00b7 ' + arr.length));
+      sec.appendChild(head);
+      var card = el('div', 'card');
+      arr.forEach(function (id) { card.appendChild(nowRow(id, state.presence[id])); });
+      sec.appendChild(card);
+      host.appendChild(sec);
+    });
+  }
+
+  function renderSheet() {
+    var host = $('sheet');
+    if (!host) return;
+    if (!state.sheet) { host.hidden = true; return; }
+    host.hidden = false;
+    var id = state.sheet;
+    var who = persona(id);
+    var raw = state.personas[id] || {};
+    var p = state.presence[id];
+
+    var av = $('sheet-av');
+    av.textContent = '';
+    av.appendChild(avatarEl(who, 'lg'));
+    $('sheet-name').textContent = who.name;
+    $('sheet-handle').textContent = '@' + who.handle;
+    var bits = [];
+    if (raw.occupation) bits.push(raw.occupation);
+    if (raw.location) bits.push(raw.location);
+    $('sheet-meta').textContent = bits.join(' \u00b7 ');
+    $('sheet-meta').hidden = !bits.length;
+    $('sheet-bio').textContent = raw.bio || '';
+    $('sheet-bio').hidden = !raw.bio;
+
+    var now = $('sheet-now');
+    now.textContent = '';
+    if (p) {
+      var top = el('div', 'sheet-now-top');
+      top.appendChild(placeGlyph(p.place));
+      top.appendChild(el('div', 'sheet-doing', p.doing));
+      now.appendChild(top);
+      var meta = el('div', 'sheet-now-meta');
+      meta.appendChild(el('span', null,
+        (PLACE_LABEL[p.place] || 'somewhere') + (raw.location ? ' \u00b7 ' + raw.location : '')));
+      meta.appendChild(document.createTextNode(' \u00b7 '));
+      meta.appendChild(el('span', 'num', ago(p.at)));
+      var again = el('button', 'linkbtn t-foot', busyText());
+      again.disabled = state.presenceBusy;
+      again.addEventListener('click', function (ev) { ev.stopPropagation(); fetchPresence(true, id); });
+      meta.appendChild(again);
+      now.appendChild(meta);
+    } else {
+      var top2 = el('div', 'sheet-now-top');
+      top2.appendChild(placeGlyph('elsewhere'));
+      top2.appendChild(el('div', 'sheet-doing' + (state.presenceBusy ? ' sec' : ''),
+        state.presenceBusy ? 'Looking around\u2026' : 'No word right now.'));
+      now.appendChild(top2);
+      var meta2 = el('div', 'sheet-now-meta');
+      if (state.presenceBusy) {
+        meta2.appendChild(el('span', 'spin'));
+        meta2.appendChild(el('span', null, 'asking around'));
+      } else {
+        meta2.appendChild(el('span', null, 'They have not said where they are.'));
+        var again2 = el('button', 'linkbtn t-foot', 'Refresh');
+        again2.addEventListener('click', function (ev) { ev.stopPropagation(); fetchPresence(true, id); });
+        meta2.appendChild(again2);
+      }
+      now.appendChild(meta2);
+    }
+
+    var recent = Object.keys(state.posts).map(function (k) { return state.posts[k]; })
+      .filter(function (post) { return post.authorId === id; })
+      .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); })
+      .slice(0, 3);
+    var ph = $('sheet-posts');
+    ph.textContent = '';
+    if (!recent.length) {
+      ph.appendChild(el('p', 't-sub sec', 'Nothing posted yet.'));
+    } else {
+      recent.forEach(function (post) {
+        var row = el('div', 'sheet-post');
+        row.appendChild(el('div', 'sp-t', post.text));
+        row.appendChild(el('div', 'sp-m t-foot sec', ago(post.createdAt)));
+        ph.appendChild(row);
+      });
+    }
+
+    var f = state.follows[id] || { following: false, followedBy: false };
+    $('sheet-follow').textContent = f.following ? 'Following' : 'Follow';
+  }
+  function busyText() { return state.presenceBusy ? 'looking\u2026' : 'Refresh'; }
+
   // ---- render: people -----------------------------------------------------
   function renderPeople() {
     var host = $('people');
@@ -1426,10 +1776,18 @@ const WINDOW_JS = `
       var main = el('div', 'person-main');
       var line = el('div');
       line.appendChild(el('span', 'name', who.name));
-      var sub = '@' + who.handle + (f.followedBy ? ' \\u00b7 follows you' : '');
+      var sub = '@' + who.handle + (f.followedBy ? ' \u00b7 follows you' : '');
       line.appendChild(el('span', 'who', ' ' + sub));
       main.appendChild(line);
-      if (p.bio) main.appendChild(el('div', 'person-bio t-sub sec', p.bio));
+      var pr = state.presence[id];
+      if (pr) {
+        var live = el('div', 'person-bio t-sub sec');
+        live.appendChild(placeGlyph(pr.place));
+        live.appendChild(document.createTextNode(' ' + pr.doing));
+        main.appendChild(live);
+      } else if (p.bio) {
+        main.appendChild(el('div', 'person-bio t-sub sec', p.bio));
+      }
       row.appendChild(main);
       var btn = el('button', 'follow-btn ' + (f.following ? 'on' : 'off'), f.following ? 'Following' : 'Follow');
       btn.addEventListener('click', function (ev) {
@@ -1443,7 +1801,7 @@ const WINDOW_JS = `
         });
       });
       row.appendChild(btn);
-      row.addEventListener('click', function () { state.focusDm = true; openThread(id); });
+      row.addEventListener('click', function () { openPerson(id); });
       host.appendChild(row);
     });
   }
@@ -1459,6 +1817,8 @@ const WINDOW_JS = `
     renderLog();
     renderDms();
     renderPeople();
+    renderNow();
+    renderSheet();
     renderStatus();
   }
 
@@ -1522,10 +1882,11 @@ const WINDOW_JS = `
   }
   function switchTab(name) {
     state.tab = name;
-    ['feed', 'log', 'dms', 'people'].forEach(function (t) {
+    ['feed', 'now', 'dms', 'people', 'log'].forEach(function (t) {
       $('tab-' + t).className = 'seg-btn' + (t === name ? ' on' : '');
       $('pane-' + t).hidden = t !== name;
     });
+    if (name === 'now' || name === 'people') ensurePresence(false);
     window.scrollTo(0, 0);
   }
 
@@ -1540,6 +1901,10 @@ const WINDOW_JS = `
     state.stories = {}; state.signals = {}; state.dms = {}; state.asks = {};
     state.log = [];
     state.me = null; state.worldInfo = null; state.thread = null;
+    state.presence = {}; state.presenceAt = 0; state.presenceBusy = false; state.presenceError = false;
+    state.sheet = null;
+    if ($('sheet')) $('sheet').hidden = true;
+    document.body.style.overflow = '';
     state.everSynced = false; state.lastSync = 0;
     loadOutbox();
     say('');
@@ -1552,6 +1917,11 @@ const WINDOW_JS = `
         switchTab(state.tab || 'feed');
         state.focusDm = false;
         render();
+        if (state.wantSheet) {
+          var ws = state.wantSheet;
+          state.wantSheet = null;
+          if (state.personas[ws]) openPerson(ws);
+        }
       }
     });
   }
@@ -1569,17 +1939,47 @@ const WINDOW_JS = `
     state.log = [];
     state.me = null; state.worldInfo = null; state.outbox = [];
     state.thread = null; state.everSynced = false; state.lastSync = 0;
+    state.presence = {}; state.presenceAt = 0; state.presenceBusy = false; state.presenceError = false;
+    state.sheet = null; state.wantSheet = null;
+    if ($('sheet')) $('sheet').hidden = true;
+    document.body.style.overflow = '';
     state.drafts = {}; state.times = [];
     $('world-id').value = ''; $('world-key').value = '';
     $('post-text').value = ''; $('post-text').style.height = 'auto';
     $('post-btn').disabled = true; $('post-count').textContent = '';
     showForm('');
   });
-  ['feed', 'log', 'dms', 'people'].forEach(function (t) {
+  ['feed', 'now', 'dms', 'people', 'log'].forEach(function (t) {
     $('tab-' + t).addEventListener('click', function () {
       switchTab(t);
       render();
     });
+  });
+  $('now-refresh').addEventListener('click', function () { ensurePresence(true); });
+  $('sheet-close').addEventListener('click', closePerson);
+  $('sheet-back').addEventListener('click', closePerson);
+  $('sheet-msg').addEventListener('click', function () {
+    var id = state.sheet;
+    if (!id) return;
+    closePerson();
+    state.focusDm = true;
+    openThread(id);
+  });
+  $('sheet-follow').addEventListener('click', function () {
+    var id = state.sheet;
+    if (!id) return;
+    var f = state.follows[id] || { following: false, followedBy: false };
+    var on = !f.following;
+    f.following = on;
+    state.follows[id] = f;
+    render();
+    act('follow', { personaId: id, on: on }).then(function (ok) {
+      if (!ok) { f.following = !on; render(); }
+      else kickSync(4);
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && state.sheet) closePerson();
   });
   $('newpill').addEventListener('click', function () {
     state.newCount = 0;
@@ -1613,6 +2013,9 @@ const WINDOW_JS = `
       if (ftab === 'dms' || ftab === 'messages') state.tab = 'dms';
       else if (ftab === 'people') state.tab = 'people';
       else if (ftab === 'log') state.tab = 'log';
+      else if (ftab === 'now') state.tab = 'now';
+      var fperson = frag.get('person');
+      if (fperson) { state.wantSheet = fperson; if (!ftab) state.tab = 'now'; }
       var fpersona = frag.get('persona');
       if (fpersona) { state.wantPersona = fpersona; state.tab = 'dms'; }
       history.replaceState(null, '', location.pathname);
@@ -1645,8 +2048,13 @@ const WINDOW_JS = `
   setInterval(function () {
     if (!$('console').hidden && !state.syncing) syncAll(false);
   }, 40000);
+  setInterval(function () {
+    if (document.hidden || state.tab !== 'now' || state.presenceBusy) return;
+    if (Date.now() - state.presenceAt > 60000) fetchPresence(false);
+  }, 40000);
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden && !$('console').hidden && Date.now() - state.lastSync > 40000) syncAll(false);
+    if (!document.hidden && state.tab === 'now' && !state.presenceBusy && Date.now() - state.presenceAt > 60000) fetchPresence(false);
   });
 })();
 `;
@@ -1700,9 +2108,10 @@ export function windowPage(): string {
 
     <div class="seg" role="tablist">
       <button id="tab-feed" class="seg-btn on" role="tab">Feed</button>
-      <button id="tab-log" class="seg-btn" role="tab">Log</button>
+      <button id="tab-now" class="seg-btn" role="tab">Now</button>
       <button id="tab-dms" class="seg-btn" role="tab">Messages</button>
       <button id="tab-people" class="seg-btn" role="tab">People</button>
+      <button id="tab-log" class="seg-btn" role="tab">Log</button>
     </div>
 
     <section id="pane-feed">
@@ -1717,6 +2126,22 @@ export function windowPage(): string {
       <div id="feed"></div>
       <p id="feed-empty" class="t-sub quiet" hidden>Quiet right now.<br><span class="t-foot sec sub" style="display:inline-block">The world speaks when it has something to say.</span></p>
       <p id="older" class="t-foot sec older"></p>
+    </section>
+
+    <section id="pane-now" hidden>
+      <div class="now-head">
+        <div class="now-head-main">
+          <h2 class="t-headline">Right now</h2>
+          <p id="now-sub" class="t-foot sec now-sub">where everyone is, at this minute</p>
+        </div>
+        <button id="now-refresh" class="mini ghost">Refresh</button>
+      </div>
+      <div id="now-loading" class="now-loading" hidden><span class="spin"></span><span class="t-foot sec">looking around…</span></div>
+      <div id="now"></div>
+      <div id="now-empty" class="quiet" hidden>
+        <p id="now-empty-t" class="t-sub">No one is saying where they are.</p>
+        <p id="now-empty-s" class="t-foot sec sub">They are not saying where they are right now.</p>
+      </div>
     </section>
 
     <section id="pane-log" hidden>
@@ -1742,6 +2167,31 @@ export function windowPage(): string {
   </section>
 </main>
 <button id="newpill" class="newpill" hidden><span id="newpill-t"></span></button>
+<div id="sheet" class="sheet" hidden>
+  <div id="sheet-back" class="sheet-back"></div>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-name">
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div id="sheet-av"></div>
+      <div class="sheet-title">
+        <h2 id="sheet-name" class="sheet-name">—</h2>
+        <div id="sheet-handle" class="t-foot sec sheet-handle"></div>
+        <div id="sheet-meta" class="t-foot sec sheet-meta"></div>
+      </div>
+      <button id="sheet-close" class="sheet-x" aria-label="Close">×</button>
+    </div>
+    <div id="sheet-now" class="sheet-now"></div>
+    <p id="sheet-bio" class="t-sub sec sheet-bio"></p>
+    <div class="sheet-sec">
+      <h3 class="sheet-k">Lately</h3>
+      <div id="sheet-posts"></div>
+    </div>
+    <div class="sheet-actions">
+      <button id="sheet-msg" class="mini accent">Message</button>
+      <button id="sheet-follow" class="mini ghost">Follow</button>
+    </div>
+  </div>
+</div>
 <script>${WINDOW_JS}</script>
 </body>
 </html>`;
