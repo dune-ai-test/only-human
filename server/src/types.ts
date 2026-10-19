@@ -100,6 +100,13 @@ export interface FollowRow {
   followed_by: number;
 }
 
+/** A note the human leaves about the world — news, weather, a small fact. */
+export interface NoteRow {
+  id: string;
+  text: string;
+  at: number;
+}
+
 export interface ActivityRow {
   world_id: string;
   id: string;

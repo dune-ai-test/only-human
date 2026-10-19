@@ -9,6 +9,7 @@
 
 import {
   getFollows,
+  getNotes,
   getPersona,
   getPersonas,
   insertDm,
@@ -467,10 +468,24 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
     case "note": {
       const text = str(p["text"]).trim();
       if (!text) return json({ error: "empty" }, 400);
+      const noteId = newId("ctx");
       await env.DB.prepare(
         "INSERT INTO context (world_id, id, source, text, at, active) VALUES (?, ?, 'you', ?, ?, 1)",
       )
-        .bind(world.id, newId("ctx"), text.slice(0, 1000), t)
+        .bind(world.id, noteId, text.slice(0, 1000), t)
+        .run();
+      return json({ ok: true, id: noteId });
+    }
+
+    case "note_remove": {
+      const noteId = str(p["id"]).trim();
+      if (!noteId) return json({ error: "id required" }, 400);
+      // Retire it rather than delete it: the row stays as an honest record,
+      // but it stops coloring prompts and disappears from the console.
+      await env.DB.prepare(
+        "UPDATE context SET active = 0 WHERE world_id = ? AND id = ? AND source = 'you'",
+      )
+        .bind(world.id, noteId)
         .run();
       return json({ ok: true });
     }
@@ -533,6 +548,15 @@ export async function handlePresence(env: Env, body: Record<string, unknown>): P
     debug: body["debug"] === true,
   });
   return json(presence);
+}
+
+// ---- world notes ---------------------------------------------------------
+
+export async function handleNotes(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const world = await authenticate(env, body);
+  if (!world) return json({ error: "unauthorized" }, 401);
+  const notes = await getNotes(env, world.id, 50);
+  return json({ notes, t: now() });
 }
 
 // ---- export / delete -----------------------------------------------------

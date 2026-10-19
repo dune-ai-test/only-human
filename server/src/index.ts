@@ -1,6 +1,6 @@
 /** The world server's front door: a fetch router and the every-minute heartbeat. */
 
-import { handleAct, handleCreate, handleDelete, handleExport, handlePresence, handleSync } from "./api";
+import { handleAct, handleCreate, handleDelete, handleExport, handleNotes, handlePresence, handleSync } from "./api";
 import { runDueJobs } from "./director";
 import type { Env } from "./types";
 import { json } from "./util";
@@ -62,6 +62,8 @@ export default {
           return await handleSync(env, body);
         case "/v1/presence":
           return await handlePresence(env, body);
+        case "/v1/notes":
+          return await handleNotes(env, body);
         case "/v1/act":
           return await handleAct(env, body);
         case "/v1/export":

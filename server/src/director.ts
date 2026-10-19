@@ -6,6 +6,7 @@
 
 import {
   getFollows,
+  getNotes,
   getPersona,
   getPersonas,
   getRelations,
@@ -28,6 +29,7 @@ import {
   dmOpenAsk,
   dmPrompt,
   mentionAsk,
+  notesPrompt,
   personaPrompt,
   postAsk,
   replyBackAsk,
@@ -59,11 +61,14 @@ function pickPersona(
 }
 
 async function personaSystem(env: Env, world: WorldRow, persona: PersonaRow): Promise<string> {
-  const personas = await getPersonas(env, world.id);
-  const relations = await getRelations(env, world.id);
+  const [personas, relations, notes] = await Promise.all([
+    getPersonas(env, world.id),
+    getRelations(env, world.id),
+    getNotes(env, world.id, 6),
+  ]);
   const nameOf = (id: string) =>
     id === "you" ? world.me_name : personas.find((p) => p.id === id)?.name ?? id;
-  return personaPrompt(world, persona, relations, nameOf);
+  return personaPrompt(world, persona, relations, nameOf) + notesPrompt(world, notes);
 }
 
 async function myPosts(env: Env, worldId: string, limit: number): Promise<PostRow[]> {

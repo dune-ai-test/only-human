@@ -458,6 +458,23 @@ body.plain .bar { background: var(--bar-plain); }
 .now-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 44px 0 36px; }
 .now-loading .spin { width: 14px; height: 14px; }
 
+/* console: world notes — the human's news, coloring what people notice */
+.world-head { display: flex; align-items: flex-end; gap: 12px; margin: 2px 2px 12px; }
+.world-head-main { flex: 1; min-width: 0; }
+.world-head h2 { margin: 0; }
+.world-head .mini { height: 30px; padding: 0 13px; font-size: 13px; }
+.world-hint { margin-top: 9px; line-height: 17px; }
+.world-list-head { display: flex; align-items: baseline; gap: 8px; margin: 18px 2px 7px; }
+.world-list-head .sheet-k { margin: 0; }
+.world-list-head .linkbtn { margin-left: auto; }
+.world-note-row { padding: 14px 16px; }
+.world-note-row + .world-note-row { border-top: .5px solid var(--sep); }
+.world-note-text { font-size: 15px; line-height: 21px; letter-spacing: -.24px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.world-note-meta { display: flex; align-items: center; gap: 10px; margin-top: 6px; color: var(--label3); }
+.world-note-meta .linkbtn { margin-left: auto; color: var(--label2); }
+.world-note-meta .linkbtn:hover { color: var(--red); }
+.world-empty { padding-top: 6px; }
+
 /* console: a person, as a sheet */
 .sheet { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
 .sheet-back {
@@ -665,6 +682,8 @@ const WINDOW_JS = `
     drafts: {},
     times: [],
     presence: {}, presenceAt: 0, presenceBusy: false, presenceError: false,
+    notes: [], notesAt: 0, notesBusy: false, notesError: false,
+    noteSending: false, noteRemoving: null,
     sheet: null, wantSheet: null,
     tab: 'feed', thread: null,
     replyOpen: null, focusReply: null, focusDm: false, wantPersona: null,
@@ -797,14 +816,21 @@ const WINDOW_JS = `
   }
 
   // ---- api ----------------------------------------------------------------
-  function act(action, payload, cmd) {
+  function actApi(action, payload, cmd) {
     var body = { worldId: state.world, key: state.key, action: action, commandId: cmd || uuid(), payload: payload };
     return fetch('/v1/act', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body)
     }).then(function (res) {
-      return res.status === 200;
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        return { status: res.status, data: data };
+      });
+    });
+  }
+  function act(action, payload, cmd) {
+    return actApi(action, payload, cmd).then(function (r) {
+      return r.status === 200;
     }).catch(function () { return false; });
   }
   function syncApi(cursor) {
@@ -820,6 +846,17 @@ const WINDOW_JS = `
   }
   function presenceApi(body) {
     return fetch('/v1/presence', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        return { status: res.status, data: data };
+      });
+    });
+  }
+  function notesApi(body) {
+    return fetch('/v1/notes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body)
@@ -1806,6 +1843,132 @@ const WINDOW_JS = `
     });
   }
 
+  // ---- world notes --------------------------------------------------------
+  function fetchNotes(force) {
+    if (!state.world || state.notesBusy || !state.everSynced) return;
+    if (!force && state.notesAt && Date.now() - state.notesAt < 30000) return;
+    state.notesBusy = true;
+    state.notesError = false;
+    renderNotes();
+    notesApi({ worldId: state.world, key: state.key }).then(function (r) {
+      state.notesBusy = false;
+      if (r.status === 200 && Array.isArray(r.data.notes)) {
+        state.notes = r.data.notes;
+        state.notesAt = Date.now();
+      } else {
+        state.notesError = true;
+      }
+      renderNotes();
+    }).catch(function () {
+      state.notesBusy = false;
+      state.notesError = true;
+      renderNotes();
+    });
+  }
+
+  function noteError(message) {
+    var el = $('note-error');
+    if (!el) return;
+    el.textContent = message || '';
+    el.hidden = !message;
+  }
+
+  function updateNoteButton() {
+    var ta = $('note-text'), btn = $('note-btn'), count = $('note-count');
+    if (!ta || !btn) return;
+    var n = ta.value.length;
+    if (count) count.textContent = n > 380 ? n + '/500' : '';
+    btn.disabled = state.noteSending || !ta.value.trim();
+  }
+
+  function worldNoteRow(n) {
+    var row = el('div', 'world-note-row');
+    row.appendChild(el('p', 'world-note-text', n.text));
+    var meta = el('div', 'world-note-meta');
+    meta.appendChild(el('span', 't-foot', 'you \\u00b7 ' + ago(n.at)));
+    var rm = el('button', 'linkbtn t-foot', state.noteRemoving === n.id ? 'Removing\\u2026' : 'Remove');
+    rm.disabled = !!state.noteRemoving;
+    rm.addEventListener('click', function () { removeNote(n.id); });
+    meta.appendChild(rm);
+    row.appendChild(meta);
+    return row;
+  }
+
+  function renderNotes() {
+    var host = $('notes');
+    if (!host) return;
+    host.textContent = '';
+    var notes = state.notes || [];
+    var busy = state.notesBusy;
+    $('notes-loading').hidden = !(busy && !notes.length);
+    $('notes-empty').hidden = !(!busy && !notes.length);
+    $('notes').hidden = !notes.length;
+    $('notes-count').textContent = notes.length ? (notes.length === 1 ? '1 note' : notes.length + ' notes') : '';
+    $('notes-refresh').disabled = busy;
+    $('notes-refresh').textContent = busy ? 'Reading\\u2026' : 'Refresh';
+    $('notes-error').hidden = !(state.notesError && notes.length > 0);
+    if (!notes.length) {
+      $('notes-empty-t').textContent = state.notesError ? 'Could not read the world.' : 'Nothing added yet.';
+      $('notes-empty-s').textContent = state.notesError
+        ? 'The server stayed quiet. Try Refresh in a moment.'
+        : 'The world is running on its own.';
+      return;
+    }
+    notes.forEach(function (n) { host.appendChild(worldNoteRow(n)); });
+  }
+
+  function removeNote(id) {
+    if (state.noteRemoving) return;
+    state.noteRemoving = id;
+    state.notesError = false;
+    renderNotes();
+    act('note_remove', { id: id }).then(function (ok) {
+      state.noteRemoving = null;
+      if (ok) {
+        state.notes = state.notes.filter(function (n) { return n.id !== id; });
+        state.notesAt = Date.now();
+      } else {
+        state.notesError = true;
+      }
+      renderNotes();
+    });
+  }
+
+  function addNote() {
+    var ta = $('note-text');
+    if (!ta || state.noteSending) return;
+    var text = ta.value.trim();
+    if (!text) return;
+    state.noteSending = true;
+    noteError('');
+    updateNoteButton();
+    $('note-btn').textContent = 'Adding\\u2026';
+    actApi('note', { text: text }).then(function (r) {
+      state.noteSending = false;
+      $('note-btn').textContent = 'Add to world';
+      if (r.status === 200) {
+        if (r.data && r.data.id) {
+          state.notes.unshift({ id: r.data.id, text: text, at: serverNow() });
+        }
+        state.notesAt = Date.now();
+        state.notesError = false;
+        ta.value = '';
+        ta.style.height = 'auto';
+        noteError('');
+        renderNotes();
+        if (!r.data || !r.data.id) fetchNotes(true);
+      } else {
+        noteError('Not added \\u2014 the world did not answer.');
+      }
+      updateNoteButton();
+    }).catch(function () {
+      state.noteSending = false;
+      $('note-btn').textContent = 'Add to world';
+      noteError('Not added \\u2014 the world did not answer.');
+      updateNoteButton();
+    });
+  }
+
   // ---- render: all --------------------------------------------------------
   function render() {
     if (!state.everSynced) return;
@@ -1818,6 +1981,7 @@ const WINDOW_JS = `
     renderDms();
     renderPeople();
     renderNow();
+    renderNotes();
     renderSheet();
     renderStatus();
   }
@@ -1882,11 +2046,12 @@ const WINDOW_JS = `
   }
   function switchTab(name) {
     state.tab = name;
-    ['feed', 'now', 'dms', 'people', 'log'].forEach(function (t) {
+    ['feed', 'now', 'world', 'dms', 'people', 'log'].forEach(function (t) {
       $('tab-' + t).className = 'seg-btn' + (t === name ? ' on' : '');
       $('pane-' + t).hidden = t !== name;
     });
     if (name === 'now' || name === 'people') ensurePresence(false);
+    if (name === 'world') fetchNotes(false);
     window.scrollTo(0, 0);
   }
 
@@ -1902,6 +2067,12 @@ const WINDOW_JS = `
     state.log = [];
     state.me = null; state.worldInfo = null; state.thread = null;
     state.presence = {}; state.presenceAt = 0; state.presenceBusy = false; state.presenceError = false;
+    state.notes = []; state.notesAt = 0; state.notesBusy = false; state.notesError = false;
+    state.noteSending = false; state.noteRemoving = null;
+    if ($('note-text')) { $('note-text').value = ''; $('note-text').style.height = 'auto'; }
+    if ($('note-btn')) $('note-btn').disabled = true;
+    if ($('note-count')) $('note-count').textContent = '';
+    noteError('');
     state.sheet = null;
     if ($('sheet')) $('sheet').hidden = true;
     document.body.style.overflow = '';
@@ -1940,6 +2111,8 @@ const WINDOW_JS = `
     state.me = null; state.worldInfo = null; state.outbox = [];
     state.thread = null; state.everSynced = false; state.lastSync = 0;
     state.presence = {}; state.presenceAt = 0; state.presenceBusy = false; state.presenceError = false;
+    state.notes = []; state.notesAt = 0; state.notesBusy = false; state.notesError = false;
+    state.noteSending = false; state.noteRemoving = null;
     state.sheet = null; state.wantSheet = null;
     if ($('sheet')) $('sheet').hidden = true;
     document.body.style.overflow = '';
@@ -1947,15 +2120,19 @@ const WINDOW_JS = `
     $('world-id').value = ''; $('world-key').value = '';
     $('post-text').value = ''; $('post-text').style.height = 'auto';
     $('post-btn').disabled = true; $('post-count').textContent = '';
+    $('note-text').value = ''; $('note-text').style.height = 'auto';
+    $('note-btn').disabled = true; $('note-count').textContent = '';
+    noteError('');
     showForm('');
   });
-  ['feed', 'now', 'dms', 'people', 'log'].forEach(function (t) {
+  ['feed', 'now', 'world', 'dms', 'people', 'log'].forEach(function (t) {
     $('tab-' + t).addEventListener('click', function () {
       switchTab(t);
       render();
     });
   });
   $('now-refresh').addEventListener('click', function () { ensurePresence(true); });
+  $('notes-refresh').addEventListener('click', function () { fetchNotes(true); });
   $('sheet-close').addEventListener('click', closePerson);
   $('sheet-back').addEventListener('click', closePerson);
   $('sheet-msg').addEventListener('click', function () {
@@ -2000,6 +2177,17 @@ const WINDOW_JS = `
   });
   $('post-btn').addEventListener('click', submitPost);
 
+  var noteTa = $('note-text');
+  noteTa.addEventListener('input', function () {
+    grow(noteTa);
+    noteError('');
+    updateNoteButton();
+  });
+  noteTa.addEventListener('keydown', function (ev) {
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') addNote();
+  });
+  $('note-btn').addEventListener('click', addNote);
+
   // ---- boot ---------------------------------------------------------------
   var launched = false;
   try {
@@ -2014,6 +2202,7 @@ const WINDOW_JS = `
       else if (ftab === 'people') state.tab = 'people';
       else if (ftab === 'log') state.tab = 'log';
       else if (ftab === 'now') state.tab = 'now';
+      else if (ftab === 'world') state.tab = 'world';
       var fperson = frag.get('person');
       if (fperson) { state.wantSheet = fperson; if (!ftab) state.tab = 'now'; }
       var fpersona = frag.get('persona');
@@ -2109,6 +2298,7 @@ export function windowPage(): string {
     <div class="seg" role="tablist">
       <button id="tab-feed" class="seg-btn on" role="tab">Feed</button>
       <button id="tab-now" class="seg-btn" role="tab">Now</button>
+      <button id="tab-world" class="seg-btn" role="tab">World</button>
       <button id="tab-dms" class="seg-btn" role="tab">Messages</button>
       <button id="tab-people" class="seg-btn" role="tab">People</button>
       <button id="tab-log" class="seg-btn" role="tab">Log</button>
@@ -2142,6 +2332,36 @@ export function windowPage(): string {
         <p id="now-empty-t" class="t-sub">No one is saying where they are.</p>
         <p id="now-empty-s" class="t-foot sec sub">They are not saying where they are right now.</p>
       </div>
+    </section>
+
+    <section id="pane-world" hidden>
+      <div class="world-head">
+        <div class="now-head-main">
+          <h2 class="t-headline">What's happening</h2>
+          <p class="t-foot sec now-sub">Add something to the world. They won't quote it; it colors what they notice.</p>
+        </div>
+      </div>
+      <div class="card compose">
+        <textarea id="note-text" class="ta" rows="2" maxlength="500" placeholder="A fact about the world: a storm, a new shop, the trains stopping…"></textarea>
+        <div class="compose-row">
+          <span id="note-count" class="t-foot sec count"></span>
+          <button id="note-btn" class="mini accent" disabled>Add to world</button>
+        </div>
+        <p class="t-foot sec world-hint">Describe the world, not what they should say. They will notice it in their own way.</p>
+        <p id="note-error" class="t-foot err" hidden></p>
+      </div>
+      <div class="world-list-head">
+        <h3 class="sheet-k">Lately in the world</h3>
+        <span id="notes-count" class="t-foot sec"></span>
+        <button id="notes-refresh" class="linkbtn t-foot">Refresh</button>
+      </div>
+      <div id="notes-loading" class="now-loading" hidden><span class="spin"></span><span class="t-foot sec">reading the world…</span></div>
+      <div id="notes" class="card" hidden></div>
+      <div id="notes-empty" class="quiet world-empty" hidden>
+        <p id="notes-empty-t" class="t-sub">Nothing added yet.</p>
+        <p id="notes-empty-s" class="t-foot sec sub">The world is running on its own.</p>
+      </div>
+      <p id="notes-error" class="t-foot err" hidden>The world did not answer. Try Refresh.</p>
     </section>
 
     <section id="pane-log" hidden>

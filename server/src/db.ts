@@ -4,6 +4,7 @@ import type {
   ActivityRow,
   Env,
   FollowRow,
+  NoteRow,
   PersonaRow,
   RelationRow,
   WorldRow,
@@ -35,6 +36,16 @@ export async function getPersona(env: Env, worldId: string, id: string): Promise
   return await env.DB.prepare("SELECT * FROM personas WHERE world_id = ? AND id = ?")
     .bind(worldId, id)
     .first<PersonaRow>();
+}
+
+/** The human's own notes about the world, newest first. */
+export async function getNotes(env: Env, worldId: string, limit = 6): Promise<NoteRow[]> {
+  const res = await env.DB.prepare(
+    "SELECT id, text, at FROM context WHERE world_id = ? AND source = 'you' AND active = 1 ORDER BY at DESC LIMIT ?",
+  )
+    .bind(worldId, Math.max(1, Math.min(100, limit)))
+    .all<NoteRow>();
+  return res.results;
 }
 
 // ---- the outbox ----------------------------------------------------------

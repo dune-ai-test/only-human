@@ -133,8 +133,9 @@ Rules decide when and what kind; the model only writes the words.
   cursor; no timestamps in the protocol beyond the display fields the app
   ignores.
 - `POST /v1/act` `{worldId, key, action, payload, commandId}` — post, reply,
-  dm, follow, like, approve, skip, set_model, budget, note, create_persona.
-  Idempotent by commandId.
+  dm, follow, like, approve, skip, set_model, budget, note, note_remove,
+  create_persona. Idempotent by commandId.
+- `POST /v1/notes` — the active world notes, newest first.
 - `POST /v1/export` — full JSON dump of a world.
 - `POST /v1/delete` `{…, confirm:"delete"}` — hard delete.
 - `GET /v1/health`.
@@ -188,11 +189,15 @@ email.
 - The server knows you're "away" from last contact; the app doesn't have to
   be running to decide.
 
-## 12. Context feed (phase 3)
+## 12. Context feed
 
-- A cron pulls weather + RSS for the world's cities → `context` rows.
-- You can drop a line ("what's happening out there") via `act` → same store.
-- Personas may react in their own voice; they never quote it like a feed.
+- **Your notes — implemented.** The site's World tab writes a line
+  ("what's happening out there") via `act` → `context` (`source = 'you'`).
+  The newest six active notes ride in every persona prompt as context, not
+  commands. Personas may notice them; they never quote them like a feed.
+  `note_remove` retires a note.
+- A cron pulling weather + RSS for the world's cities → `context` rows is
+  still later; the store and prompt path are ready for it.
 
 ## 13. World tab (phase 4)
 
@@ -220,7 +225,8 @@ email.
    daily-budget row, per-persona models synced. The local sim remains the
    default until server mode is proven on device.
 2. **FCM notifications.**
-3. **Context feed + your notes.**
+3. **Context feed + your notes** — notes implemented (site World tab +
+   prompt context); weather/RSS later.
 4. **World tab.**
 
 ## 16. Open points

@@ -8,9 +8,10 @@
  * state stays — with its real age — and nothing is invented.
  */
 
-import { getPersonas } from "./db";
+import { getNotes, getPersonas } from "./db";
 import { writeRaw } from "./engine";
-import type { Env, PersonaRow, WorldRow } from "./types";
+import { notesPrompt } from "./prompts";
+import type { Env, NoteRow, PersonaRow, WorldRow } from "./types";
 import { now, quietNow } from "./util";
 
 const PLACES = [
@@ -161,7 +162,7 @@ function parsePresence(raw: string, targets: string[]): { id: string; place: Pla
   return out;
 }
 
-function buildSystem(world: WorldRow, t: number): string {
+function buildSystem(world: WorldRow, t: number, notes: NoteRow[]): string {
   const local = new Date(t + world.utc_offset * 60_000);
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const h = local.getUTCHours();
@@ -184,6 +185,7 @@ function buildSystem(world: WorldRow, t: number): string {
     "Use the previous place only for continuity; they may have moved since.",
     "Never mention the app or the content they make. Do not use the words post, posting, story, feed, app, online, phone, or being watched. Describe their life, not their timeline.",
     "Do not use the person's name in doing.",
+    notesPrompt(world, notes),
     `place must be exactly one of: ${PLACES.join(", ")}.`,
     "Return a JSON array only, with one object for every person listed, no prose and no code fences:",
     '[{"id":"maya","place":"cafe","doing":"..."}]',
@@ -250,7 +252,8 @@ async function generate(
   cached: Map<string, Cached>,
   t: number,
 ): Promise<{ entries: { id: string; place: Place; doing: string }[]; raw: string | null }> {
-  const system = buildSystem(world, t);
+  const notes = await getNotes(env, world.id, 6);
+  const system = buildSystem(world, t, notes);
   const user = await buildUser(env, world, targets, cached, t);
   const raw = await writeRaw(env, world, system, [{ role: "user", content: user }], 1000, null, false);
   if (!raw) return { entries: [], raw: null };
