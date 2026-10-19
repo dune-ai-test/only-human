@@ -1710,7 +1710,7 @@ const WINDOW_JS = `
         var preview;
         if (!c.last) preview = g.topic || 'No messages yet';
         else preview = (c.last.authorId === 'you' ? 'You: ' : shortName(c.last.authorId) + ': ') + (c.last.text || '');
-        gmain.appendChild(el('div', 'dm-preview t-sub sec', preview.replace('\n', ' ')));
+        gmain.appendChild(el('div', 'dm-preview t-sub sec', preview.replace('\\n', ' ')));
         grow.appendChild(gmain);
         var gtime = el('span', 'dm-time t-foot sec', c.last ? ago(c.last.at) : '');
         if (c.last) state.times.push({ el: gtime, at: c.last.at, prefix: '' });
@@ -1955,7 +1955,7 @@ const WINDOW_JS = `
     function refreshPicker() {
       var value = input.value;
       var at = value.lastIndexOf('@');
-      var active = at >= 0 && !/[\s]/.test(value.slice(at + 1));
+      var active = at >= 0 && !/[\\s]/.test(value.slice(at + 1));
       picker.hidden = !active;
       if (!active) return;
       var word = value.slice(at + 1).toLowerCase();
