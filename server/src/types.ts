@@ -84,6 +84,24 @@ export interface DmRow {
   at: number;
 }
 
+export interface GroupRow {
+  world_id: string;
+  id: string;
+  name: string;
+  topic: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface GroupMsgRow {
+  world_id: string;
+  id: string;
+  group_id: string;
+  author_id: string;
+  text: string;
+  at: number;
+}
+
 export interface AskRow {
   world_id: string;
   id: string;

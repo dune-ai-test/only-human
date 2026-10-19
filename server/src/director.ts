@@ -21,6 +21,7 @@ import {
   schedule,
   setFollow,
 } from "./db";
+import { getGroup, getGroupMembers, getGroupMsgs, insertGroupMsg } from "./groups";
 import { writeChat } from "./engine";
 import {
   commentAsk,
@@ -28,6 +29,8 @@ import {
   dmDayAsk,
   dmOpenAsk,
   dmPrompt,
+  groupAsk,
+  groupPrompt,
   mentionAsk,
   notesPrompt,
   personaPrompt,
@@ -285,6 +288,55 @@ async function runJob(env: Env, world: WorldRow, job: JobRow): Promise<void> {
       if (text) {
         await insertDm(env, world, persona.id, false, text);
         await pushActivity(env, world.id, persona.id, persona.name, " sent you a message", "Message");
+      }
+      return;
+    }
+    case "group_reply": {
+      const group = await getGroup(env, world.id, payload.groupId);
+      if (!group) return;
+      const history = await getGroupMsgs(env, world.id, group.id, 16);
+      // Only the newest human message gets an answer — the rest were the same breath.
+      if (!history.length || history[history.length - 1].id !== payload.msgId) return;
+      const people = await getPersonas(env, world.id);
+      const memberIds = await getGroupMembers(env, world.id, group.id);
+      const members = memberIds
+        .map((id) => people.find((x) => x.id === id))
+        .filter((x): x is PersonaRow => !!x);
+      if (!members.length) return;
+      const mine = history[history.length - 1];
+      const nameOf = (id: string) =>
+        id === "you" ? world.me_name : people.find((x) => x.id === id)?.name ?? "someone";
+      // Tagged members answer; otherwise one of them picks up the thread.
+      const tagged = members
+        .filter((x) => new RegExp(`@${x.handle}(?![a-z0-9_])`, "i").test(mine.text))
+        .slice(0, 2);
+      const responders = tagged.length ? tagged : [pick(members)].filter((x): x is PersonaRow => !!x);
+      for (const persona of responders) {
+        // A second voice hears the first one.
+        const soFar = await getGroupMsgs(env, world.id, group.id, 16);
+        const transcript = soFar
+          .map((m) => `${nameOf(m.author_id)}: ${m.text.replace(/\s+/g, " ").slice(0, 200)}`)
+          .join("\n");
+        const system = groupPrompt(await personaSystem(env, world, persona), world, group, members);
+        const text = await writeChat(
+          env,
+          world,
+          system,
+          [{ role: "user", content: groupAsk(world, group, transcript, tagged.includes(persona)) }],
+          120,
+          persona.model,
+        );
+        if (text) {
+          await insertGroupMsg(env, world, group.id, persona.id, text);
+          await pushActivity(
+            env,
+            world.id,
+            persona.id,
+            persona.name,
+            ` sent a message to \u201C${group.name}\u201D`,
+            "Message",
+          );
+        }
       }
       return;
     }

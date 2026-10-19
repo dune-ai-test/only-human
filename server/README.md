@@ -196,7 +196,10 @@ then `curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"`.
   the site can fill into its form), `create_org` (`{ preset:
   "org-guardian" | "org-bbc" | "org-npr" | "org-aljazeera" }`, or a custom
   `{ name, handle, city, bio, feedUrl }` whose public feed is checked before
-  it is saved). `commandId` makes retries safe (dedup, 1 day).
+  it is saved), and the group-chat set: `group_create` `{ name, topic,
+  members }`, `group_update`, `group_add`, `group_remove`, `group_send` — a
+  member answers 15–45 s later, the ones you tagged first. `commandId` makes
+  retries safe (dedup, 1 day).
 - `POST /v1/presence` `{ worldId, key, personaId?, force? }` — who is
   where, right now. Refreshes only the people whose cached state is older
   than 15 minutes, in one batched write; `personaId` asks about one person,
@@ -211,9 +214,9 @@ then `curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"`.
 
 - **Heartbeat**: a cron trigger every minute runs due jobs: world ticks
   (scheduled 5–14 min apart while awake; a long silence forces an event),
-  warm-up writes, DM replies, comment asks and comment writes. Interactive
-  things land roughly a minute or two after you do them — slow enough to
-  feel human.
+  warm-up writes, DM replies, group replies, comment asks and comment writes.
+  Interactive things land roughly a minute or two after you do them — slow
+  enough to feel human.
 - **Quiet hours**: the world sleeps 01:00–06:30 *your local time* (the
   offset you shipped at creation), waking ~06:45.
 - **Budget**: `daily_budget` per world (default 200, adjustable 0–1000

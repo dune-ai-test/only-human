@@ -2,7 +2,7 @@
  * The HTTP contract, exactly as docs/world-server.md describes it:
  *   POST /v1/worlds  — create a world (ships the cast + your name/handle)
  *   POST /v1/sync    — pull everything since the cursor
- *   POST /v1/act     — post, reply, dm, follow, like, approve, skip, …
+ *   POST /v1/act     — post, reply, dm, group_send, follow, like, approve, skip, …
  *   POST /v1/export  — a JSON dump of everything
  *   POST /v1/delete  — hard delete, with confirm
  */
@@ -23,6 +23,7 @@ import {
   setFollow,
 } from "./db";
 import { addCustomOrg, addPresetOrg, ensureNewsSchema, ensureSeedOrgs, getOrg, getOrgs, orgPayload } from "./news";
+import { createGroup, getGroup, getGroupMembers, insertGroupMsg, pushGroup } from "./groups";
 import { getPresence } from "./presence";
 import { draftOrgAsk, draftPersonAsk } from "./prompts";
 import { writeRaw } from "./engine";
@@ -581,6 +582,91 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
       const dmId = await insertDm(env, world, personaId, true, text.slice(0, 500), clientId(p["id"]) ?? undefined);
       await schedule(env, world.id, t + randInt(20_000, 60_000), "dm_reply", { personaId });
       return json({ ok: true, id: dmId });
+    }
+
+    case "group_create": {
+      const name = str(p["name"]).replace(/\s+/g, " ").trim().slice(0, 60);
+      const topic = str(p["topic"]).replace(/\s+/g, " ").trim().slice(0, 140);
+      const rawMembers = Array.isArray(p["members"]) ? (p["members"] as unknown[]) : [];
+      const memberIds: string[] = [];
+      for (const raw of rawMembers) {
+        const id = str(raw).trim();
+        if (!id || memberIds.includes(id)) continue;
+        if (!(await getPersona(env, world.id, id))) continue;
+        memberIds.push(id);
+        if (memberIds.length >= 16) break;
+      }
+      if (!name) return json({ error: "give the group a name" }, 400);
+      if (!memberIds.length) return json({ error: "add at least one person" }, 400);
+      const group = await createGroup(env, world, name, topic, memberIds);
+      return json({ ok: true, id: group.id });
+    }
+
+    case "group_update": {
+      const groupId = str(p["groupId"]);
+      const group = await getGroup(env, world.id, groupId);
+      if (!group) return json({ error: "no such group" }, 404);
+      const name = str(p["name"]).replace(/\s+/g, " ").trim().slice(0, 60) || group.name;
+      const topic = p["topic"] === undefined
+        ? group.topic
+        : str(p["topic"]).replace(/\s+/g, " ").trim().slice(0, 140);
+      await env.DB.prepare("UPDATE groups SET name = ?, topic = ?, updated_at = ? WHERE world_id = ? AND id = ?")
+        .bind(name, topic, t, world.id, group.id)
+        .run();
+      await pushGroup(env, world.id, group.id);
+      return json({ ok: true });
+    }
+
+    case "group_add": {
+      const groupId = str(p["groupId"]);
+      const group = await getGroup(env, world.id, groupId);
+      if (!group) return json({ error: "no such group" }, 404);
+      const members = await getGroupMembers(env, world.id, group.id);
+      const rawIds = Array.isArray(p["personaIds"]) ? (p["personaIds"] as unknown[]) : [];
+      for (const raw of rawIds) {
+        const id = str(raw).trim();
+        if (!id || members.includes(id)) continue;
+        if (members.length >= 16) break;
+        if (!(await getPersona(env, world.id, id))) continue;
+        await env.DB.prepare(
+          "INSERT OR IGNORE INTO group_members (world_id, group_id, persona_id, at) VALUES (?, ?, ?, ?)",
+        )
+          .bind(world.id, group.id, id, t)
+          .run();
+        members.push(id);
+      }
+      await env.DB.prepare("UPDATE groups SET updated_at = ? WHERE world_id = ? AND id = ?")
+        .bind(t, world.id, group.id)
+        .run();
+      await pushGroup(env, world.id, group.id);
+      return json({ ok: true });
+    }
+
+    case "group_remove": {
+      const groupId = str(p["groupId"]);
+      const personaId = str(p["personaId"]);
+      const group = await getGroup(env, world.id, groupId);
+      if (!group) return json({ error: "no such group" }, 404);
+      await env.DB.prepare("DELETE FROM group_members WHERE world_id = ? AND group_id = ? AND persona_id = ?")
+        .bind(world.id, group.id, personaId)
+        .run();
+      await env.DB.prepare("UPDATE groups SET updated_at = ? WHERE world_id = ? AND id = ?")
+        .bind(t, world.id, group.id)
+        .run();
+      await pushGroup(env, world.id, group.id);
+      return json({ ok: true });
+    }
+
+    case "group_send": {
+      const groupId = str(p["groupId"]);
+      const text = str(p["text"]).trim();
+      if (!groupId || !text) return json({ error: "empty" }, 400);
+      const group = await getGroup(env, world.id, groupId);
+      if (!group) return json({ error: "no such group" }, 404);
+      const msgId = await insertGroupMsg(env, world, group.id, "you", text.slice(0, 500), clientId(p["id"]) ?? undefined);
+      // One member answers — a member you tagged first, otherwise someone at random.
+      await schedule(env, world.id, t + randInt(15_000, 45_000), "group_reply", { groupId: group.id, msgId });
+      return json({ ok: true, id: msgId });
     }
 
     case "follow": {

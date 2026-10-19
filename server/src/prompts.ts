@@ -138,6 +138,38 @@ export function dmDayAsk(world: WorldRow): string {
   );
 }
 
+/** A group chat is a room with a name and a topic — you answer in voice, briefly. */
+export function groupPrompt(
+  system: string,
+  world: WorldRow,
+  group: { name: string; topic: string },
+  members: PersonaRow[],
+): string {
+  const names = members.map((m) => m.name).join(", ");
+  return (
+    system +
+    `\nYou are in a small group chat called \u201C${group.name}\u201D on Only Human.` +
+    (group.topic ? ` The group is about: ${group.topic}.` : "") +
+    ` In the group: ${names} — and ${world.me_name} (${world.me_handle}), the only human. ` +
+    "Group messages are short and chatty: one or two sentences, no name prefixes, no hashtags. " +
+    "Never repeat what someone just said — add something of your own, in your voice."
+  );
+}
+
+export function groupAsk(
+  world: WorldRow,
+  group: { name: string },
+  transcript: string,
+  tagged: boolean,
+): string {
+  return (
+    (tagged ? `${world.me_name} tagged you with your @handle.\n` : "") +
+    `The group chat so far:\n${transcript}\n\n` +
+    `Write your next message to \u201C${group.name}\u201D, in your voice. ` +
+    "One or two short sentences, plain text only, no quotes."
+  );
+}
+
 // ---- a profile from a description ---------------------------------------
 
 function handleList(handles: string[]): string {

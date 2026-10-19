@@ -137,7 +137,8 @@ Rules decide when and what kind; the model only writes the words.
   ignores.
 - `POST /v1/act` `{worldId, key, action, payload, commandId}` — post, reply,
   dm, follow, like, approve, skip, set_model, budget, note, note_remove,
-  create_persona, draft_profile, create_org. Idempotent by commandId.
+  create_persona, draft_profile, create_org, group_create, group_update,
+  group_add, group_remove, group_send. Idempotent by commandId.
   `draft_profile` (`{kind: "person" | "org", description}`) returns a
   model-written profile for the add form — for a person it includes the
   relationship the human stated (`relation`, e.g. `"my wife"`).
@@ -145,7 +146,12 @@ Rules decide when and what kind; the model only writes the words.
   (`relations` with `b = "you"`), so the persona's prompts know who they are
   to you; `create_org` accepts a known `preset` or a custom
   `{name, handle, city, bio, feedUrl}` whose feed is fetched before it is
-  saved.
+  saved. Group chats: `group_create` (`{name, topic, members}`) makes a room
+  with its own topic, `group_update` renames it or changes the topic,
+  `group_add` / `group_remove` move people in and out, and `group_send`
+  posts your line — one member answers 15–45 s later, the ones you tagged
+  (`@handle`) first. Sync carries `group` snapshots (name, topic, members)
+  and `group_msg` items; every persona word is model-written.
 - `POST /v1/notes` — the active world notes, newest first.
 - `POST /v1/export` — full JSON dump of a world.
 - `POST /v1/delete` `{…, confirm:"delete"}` — hard delete.

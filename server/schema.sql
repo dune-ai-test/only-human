@@ -86,6 +86,34 @@ CREATE TABLE IF NOT EXISTS dms (
   PRIMARY KEY (world_id, id)
 );
 
+CREATE TABLE IF NOT EXISTS groups (
+  world_id   TEXT NOT NULL,
+  id         TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  topic      TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (world_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS group_members (
+  world_id   TEXT NOT NULL,
+  group_id   TEXT NOT NULL,
+  persona_id TEXT NOT NULL,
+  at         INTEGER NOT NULL,
+  PRIMARY KEY (world_id, group_id, persona_id)
+);
+
+CREATE TABLE IF NOT EXISTS group_msgs (
+  world_id  TEXT NOT NULL,
+  id        TEXT NOT NULL,
+  group_id  TEXT NOT NULL,
+  author_id TEXT NOT NULL,
+  text      TEXT NOT NULL,
+  at        INTEGER NOT NULL,
+  PRIMARY KEY (world_id, id)
+);
+
 CREATE TABLE IF NOT EXISTS comment_asks (
   world_id   TEXT NOT NULL,
   id         TEXT NOT NULL,
@@ -181,4 +209,5 @@ CREATE INDEX IF NOT EXISTS idx_jobs_due ON jobs(done, run_at);
 CREATE INDEX IF NOT EXISTS idx_posts_world ON posts(world_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_replies_post ON replies(world_id, post_id);
 CREATE INDEX IF NOT EXISTS idx_dms_world ON dms(world_id, persona_id, at);
+CREATE INDEX IF NOT EXISTS idx_group_msgs ON group_msgs(world_id, group_id, at);
 CREATE INDEX IF NOT EXISTS idx_asks_world ON comment_asks(world_id, post_id);
