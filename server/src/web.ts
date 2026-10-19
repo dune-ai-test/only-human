@@ -410,6 +410,35 @@ body.plain .bar { background: var(--bar-plain); }
 .sendbtn[disabled] { opacity: .4; pointer-events: none; }
 .sendbtn:active { transform: scale(.94); }
 
+/* console: groups */
+.av.gav-plus { background-image: none; background: var(--card2); color: var(--label2); font-size: 22px; font-weight: 500; }
+.gmsg { display: flex; gap: 7px; align-items: flex-end; }
+.gspacer { width: 28px; flex: none; }
+.gbody { min-width: 0; max-width: 78%; display: flex; flex-direction: column; align-items: flex-start; }
+.gname { margin: 2px 0 1px 13px; }
+.gbody .bubble { max-width: 100%; }
+.mention { color: var(--accent); font-weight: 600; }
+.bubble.me .mention { color: #FFFFFF; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .45); }
+.gpick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.gchip { border: .5px solid var(--sep); background: var(--card); color: var(--label); border-radius: 999px; padding: 6px 11px; font: inherit; font-size: 13px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.gchip:active { transform: scale(.96); }
+.gpanel { border: .5px solid var(--sep); border-radius: 14px; padding: 12px 14px; margin: 6px 0 2px; background: var(--card2); }
+.gpanel .sheet-k { margin: 12px 0 2px; }
+.gpanel-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.gpanel-row .mini { margin-left: auto; }
+.gpanel-in { flex: 1 1 0; min-width: 0; background: var(--card); border: .5px solid var(--sep); border-radius: 10px; padding: 0 12px; }
+.gpanel-in .dm-in { height: 30px; }
+.thread-title { flex: 1; min-width: 0; }
+.thread-sub { margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gpanel-add { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 4px; }
+.grow-members { margin-top: 10px; }
+.grow-member { display: flex; align-items: center; gap: 8px; padding: 7px 0; cursor: pointer; }
+.grow-member input { accent-color: var(--accent); width: 19px; height: 19px; }
+.grow-member-name { font-size: 15px; letter-spacing: -.24px; }
+.grow-member .t-foot { margin-left: auto; }
+.grow-err { margin-top: 8px; }
+.grow-submit { margin-top: 12px; }
+
 /* console: people */
 .person { display: flex; gap: 12px; padding: 13px 0; align-items: center; cursor: pointer; }
 .person + .person { border-top: .5px solid var(--sep); }
@@ -785,6 +814,7 @@ const WINDOW_JS = `
     me: null, worldInfo: null, budget: null,
     personas: {}, follows: {}, posts: {}, replies: {}, stories: {},
     signals: {}, dms: {}, asks: {},
+    groups: {}, gmsgs: {},
     log: [],
     outbox: [],
     drafts: {},
@@ -793,7 +823,7 @@ const WINDOW_JS = `
     notes: [], notesAt: 0, notesBusy: false, notesError: false,
     noteSending: false, noteRemoving: null,
     sheet: null, wantSheet: null, grow: null, growBusy: false,
-    tab: 'feed', thread: null,
+    tab: 'feed', thread: null, gthread: null, groupPanel: false, growMembers: [],
     replyOpen: null, focusReply: null, focusDm: false, wantPersona: null,
     newCount: 0
   };
@@ -1002,6 +1032,7 @@ const WINDOW_JS = `
     var e = { world: state.world, kind: kind, id: clientId(kind), cmd: uuid(), at: Date.now(), status: 'queued', text: fields.text };
     if (fields.postId) e.postId = fields.postId;
     if (fields.personaId) e.personaId = fields.personaId;
+    if (fields.groupId) e.groupId = fields.groupId;
     state.outbox.push(e);
     saveOutbox();
     return e;
@@ -1013,10 +1044,11 @@ const WINDOW_JS = `
       if (e.status === 'failed' && !e.retry) return;
       e.retry = false;
       e.status = 'sending';
-      var action = e.kind === 'post' ? 'post' : e.kind === 'reply' ? 'reply' : 'dm';
+      var action = e.kind === 'post' ? 'post' : e.kind === 'reply' ? 'reply' : e.kind === 'group_send' ? 'group_send' : 'dm';
       var payload;
       if (e.kind === 'post') payload = { text: e.text, id: e.id };
       else if (e.kind === 'reply') payload = { postId: e.postId, text: e.text, id: e.id };
+      else if (e.kind === 'group_send') payload = { groupId: e.groupId, text: e.text, id: e.id };
       else payload = { personaId: e.personaId, text: e.text, id: e.id };
       act(action, payload, e.cmd).then(function (ok) {
         e.status = ok ? 'sent' : 'failed';
@@ -1033,6 +1065,7 @@ const WINDOW_JS = `
     state.outbox = state.outbox.filter(function (e) {
       if (e.kind === 'post') return !state.posts[e.id];
       if (e.kind === 'reply') return !state.replies[e.id];
+      if (e.kind === 'group_send') return !state.gmsgs[e.id];
       return !state.dms[e.id];
     });
     if (state.outbox.length !== before) saveOutbox();
@@ -1043,6 +1076,7 @@ const WINDOW_JS = `
     if (replace) {
       state.personas = {}; state.follows = {}; state.posts = {}; state.replies = {};
       state.stories = {}; state.signals = {}; state.dms = {}; state.asks = {};
+    state.groups = {}; state.gmsgs = {};
       state.log = [];
     }
     (items || []).forEach(function (item) {
@@ -1055,6 +1089,8 @@ const WINDOW_JS = `
       else if (item.kind === 'story') state.stories[d.id] = d;
       else if (item.kind === 'signal') state.signals[d.id] = d;
       else if (item.kind === 'dm') state.dms[d.id] = d;
+      else if (item.kind === 'group') state.groups[d.id] = d;
+      else if (item.kind === 'group_msg') state.gmsgs[d.id] = d;
       else if (item.kind === 'ask') state.asks[d.id] = d;
       // The log keeps every outbox item in order — even the updates that the
       // state maps collapse (an ask moving pending → approved, a post's
@@ -1113,6 +1149,10 @@ const WINDOW_JS = `
           state.tab = 'dms';
         } else if (state.thread && !state.personas[state.thread]) {
           state.thread = null;
+        }
+        if (state.gthread && !state.groups[state.gthread]) {
+          state.gthread = null;
+          state.groupPanel = false;
         }
         state.wantPersona = null;
         if (replace) {
@@ -1594,6 +1634,7 @@ const WINDOW_JS = `
 
   // ---- render: messages ---------------------------------------------------
   function conversations() {
+    var convos = [];
     var by = {};
     Object.keys(state.dms).forEach(function (id) {
       var d = state.dms[id];
@@ -1607,17 +1648,41 @@ const WINDOW_JS = `
       if (!c) { c = { personaId: e.personaId, last: { text: e.text, at: e.at, fromMe: true } }; by[e.personaId] = c; }
       else if ((e.at || 0) > (c.last.at || 0)) c.last = { text: e.text, at: e.at, fromMe: true };
     });
-    return Object.keys(by).map(function (k) { return by[k]; })
-      .sort(function (a, b) { return (b.last.at || 0) - (a.last.at || 0); });
+    Object.keys(by).forEach(function (k) { by[k].type = 'dm'; convos.push(by[k]); });
+
+    var gby = {};
+    Object.keys(state.groups).forEach(function (gid) { gby[gid] = { groupId: gid, last: null }; });
+    Object.keys(state.gmsgs).forEach(function (id) {
+      var m = state.gmsgs[id];
+      var c = gby[m.groupId];
+      if (!c) { c = { groupId: m.groupId, last: m }; gby[m.groupId] = c; }
+      else if ((m.at || 0) > (c.last.at || 0)) c.last = m;
+    });
+    state.outbox.forEach(function (e) {
+      if (e.kind !== 'group_send') return;
+      var c = gby[e.groupId];
+      var last = { text: e.text, at: e.at, authorId: 'you' };
+      if (!c) { c = { groupId: e.groupId, last: last }; gby[e.groupId] = c; }
+      else if (!c.last || (e.at || 0) > (c.last.at || 0)) c.last = last;
+    });
+    Object.keys(gby).forEach(function (k) { gby[k].type = 'group'; convos.push(gby[k]); });
+
+    return convos.sort(function (a, b) {
+      return ((b.last && b.last.at) || 0) - ((a.last && a.last.at) || 0);
+    });
+  }
+
+  function shortName(id) {
+    return persona(id).name.split(' ')[0] || persona(id).name;
   }
 
   function renderDms() {
     var list = $('dm-list');
     var thread = $('dm-thread');
-    if (state.thread) {
+    if (state.thread || state.gthread) {
       list.hidden = true;
       thread.hidden = false;
-      renderThread();
+      if (state.gthread) renderGthread(); else renderThread();
       return;
     }
     thread.hidden = true;
@@ -1625,7 +1690,35 @@ const WINDOW_JS = `
     list.textContent = '';
     var convos = conversations();
     $('dm-empty').hidden = convos.length > 0;
+
+    var ng = el('div', 'dm-row');
+    ng.appendChild(el('div', 'av gav-plus', '+'));
+    var ngMain = el('div', 'dm-main');
+    ngMain.appendChild(el('div', 'name', 'New Group'));
+    ngMain.appendChild(el('div', 'dm-preview t-sub sec', 'You and a few of them, in one room.'));
+    ng.appendChild(ngMain);
+    ng.addEventListener('click', function () { openGrow('group'); });
+    list.appendChild(ng);
+
     convos.forEach(function (c) {
+      if (c.type === 'group') {
+        var g = state.groups[c.groupId] || { id: c.groupId, name: 'Group', members: [], topic: '' };
+        var grow = el('div', 'dm-row');
+        grow.appendChild(groupAvatarEl(g));
+        var gmain = el('div', 'dm-main');
+        gmain.appendChild(el('div', 'name', g.name || 'Group'));
+        var preview;
+        if (!c.last) preview = g.topic || 'No messages yet';
+        else preview = (c.last.authorId === 'you' ? 'You: ' : shortName(c.last.authorId) + ': ') + (c.last.text || '');
+        gmain.appendChild(el('div', 'dm-preview t-sub sec', preview.replace('\n', ' ')));
+        grow.appendChild(gmain);
+        var gtime = el('span', 'dm-time t-foot sec', c.last ? ago(c.last.at) : '');
+        if (c.last) state.times.push({ el: gtime, at: c.last.at, prefix: '' });
+        grow.appendChild(gtime);
+        grow.addEventListener('click', function () { openGroupThread(c.groupId); });
+        list.appendChild(grow);
+        return;
+      }
       var who = persona(c.personaId);
       var row = el('div', 'dm-row');
       row.appendChild(avatarEl(who));
@@ -1643,10 +1736,271 @@ const WINDOW_JS = `
 
   function openThread(personaId) {
     closePerson();
+    state.gthread = null;
+    state.groupPanel = false;
     state.thread = personaId;
     state.tab = 'dms';
     switchTab('dms');
     render();
+  }
+
+  function openGroupThread(groupId) {
+    closePerson();
+    state.thread = null;
+    state.gthread = groupId;
+    state.groupPanel = false;
+    state.tab = 'dms';
+    switchTab('dms');
+    render();
+  }
+
+  function groupMemberIds(g) {
+    return (g.members || []).slice();
+  }
+
+  function groupAvatarEl(g) {
+    var av = el('div', 'av gav', initials(g.name));
+    var first = null;
+    groupMemberIds(g).forEach(function (id) {
+      if (!first && state.personas[id]) first = state.personas[id];
+    });
+    var grad = (first && first.gradient && first.gradient.length >= 2) ? first.gradient : GRAY;
+    av.style.setProperty('--g1', grad[0]);
+    av.style.setProperty('--g2', grad[1]);
+    return av;
+  }
+
+  function mentionEl(text) {
+    var host = el('p', 'bt');
+    var re = /@([A-Za-z0-9_]+)/g;
+    var last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) host.appendChild(document.createTextNode(text.slice(last, m.index)));
+      host.appendChild(el('span', 'mention', m[0]));
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) host.appendChild(document.createTextNode(text.slice(last)));
+    return host;
+  }
+
+  function groupPanel(g) {
+    var card = el('div', 'gpanel');
+    function field(value, placeholder) {
+      var box = el('div', 'gpanel-in');
+      var input = el('input', 'dm-in');
+      input.type = 'text';
+      input.value = value || '';
+      input.placeholder = placeholder;
+      input.maxLength = 140;
+      box.appendChild(input);
+      return { box: box, input: input };
+    }
+    var nameF = field(g.name, 'Name');
+    var topicF = field(g.topic, 'Topic \u2014 what the room is about');
+    var saveRow = el('div', 'gpanel-row');
+    saveRow.appendChild(nameF.box);
+    saveRow.appendChild(topicF.box);
+    var save = el('button', 'mini', 'Save');
+    save.addEventListener('click', function () {
+      var name = nameF.input.value.trim();
+      var topic = topicF.input.value.trim();
+      if (!name) return;
+      g.name = name;
+      g.topic = topic;
+      actApi('group_update', { groupId: g.id, name: name, topic: topic }).then(function () { kickSync(4); });
+      render();
+    });
+    saveRow.appendChild(save);
+    card.appendChild(saveRow);
+
+    var kids = groupMemberIds(g);
+    card.appendChild(el('h3', 'sheet-k', 'In the room'));
+    kids.forEach(function (id) {
+      var row = el('div', 'gpanel-row');
+      row.appendChild(avatarEl(persona(id), 'sm'));
+      row.appendChild(el('span', 'grow-member-name', persona(id).name));
+      var rm = el('button', 'mini ghost', 'Remove');
+      rm.addEventListener('click', function () {
+        g.members = kids.filter(function (x) { return x !== id; });
+        actApi('group_remove', { groupId: g.id, personaId: id }).then(function () { kickSync(4); });
+        render();
+      });
+      row.appendChild(rm);
+      card.appendChild(row);
+    });
+
+    var addable = Object.keys(state.personas).filter(function (id) {
+      var p = state.personas[id];
+      return (p.kind || 'person') !== 'org' && kids.indexOf(id) < 0;
+    }).sort(function (a, b) {
+      return (state.personas[a].name || '').localeCompare(state.personas[b].name || '');
+    });
+    if (addable.length) {
+      card.appendChild(el('h3', 'sheet-k', 'Add someone'));
+      var addRow = el('div', 'gpanel-add');
+      addable.forEach(function (id) {
+        var chip = el('button', 'gchip', '+ ' + persona(id).name);
+        chip.addEventListener('click', function () {
+          g.members = kids.concat([id]);
+          actApi('group_add', { groupId: g.id, personaIds: [id] }).then(function () { kickSync(4); });
+          render();
+        });
+        addRow.appendChild(chip);
+      });
+      card.appendChild(addRow);
+    }
+    return card;
+  }
+
+  function renderGthread() {
+    var host = $('dm-thread');
+    host.textContent = '';
+    var g = state.groups[state.gthread];
+    if (!g) { state.gthread = null; render(); return; }
+
+    var head = el('div', 'thread-head');
+    var back = el('button', 'linkbtn t-foot', '\u2039 Messages');
+    back.addEventListener('click', function () { state.gthread = null; state.groupPanel = false; render(); });
+    head.appendChild(back);
+    var title = el('div', 'thread-title');
+    title.appendChild(el('div', 'thread-name t-headline', g.name || 'Group'));
+    var kids = groupMemberIds(g);
+    var names = kids.map(function (id) { return shortName(id); });
+    var sub = g.topic || (names.length ? names.join(', ') : 'just you');
+    title.appendChild(el('div', 't-foot sec thread-sub', sub));
+    head.appendChild(title);
+    var info = el('button', 'mini ghost', kids.length + ' \u00b7 ' + (state.groupPanel ? 'Close' : 'People'));
+    info.addEventListener('click', function () { state.groupPanel = !state.groupPanel; render(); });
+    head.appendChild(info);
+    host.appendChild(head);
+
+    if (state.groupPanel) host.appendChild(groupPanel(g));
+
+    var bubbles = el('div', 'bubbles');
+    var all = [];
+    Object.keys(state.gmsgs).forEach(function (id) {
+      var m = state.gmsgs[id];
+      if (m.groupId === g.id) all.push({ at: m.at || 0, authorId: m.authorId, text: m.text, id: m.id });
+    });
+    state.outbox.forEach(function (e) {
+      if (e.kind === 'group_send' && e.groupId === g.id && !state.gmsgs[e.id]) {
+        all.push({ at: e.at, authorId: 'you', text: e.text, entry: e, id: e.id });
+      }
+    });
+    all.sort(function (a, b) { return a.at - b.at; });
+
+    function bubbleFor(m) {
+      var me = m.authorId === 'you';
+      var b = el('div', 'bubble ' + (me ? 'me' : 'them'));
+      b.appendChild(mentionEl(m.text || ''));
+      if (m.entry && m.entry.status === 'failed') {
+        var note = el('div', 'fail-note');
+        note.appendChild(document.createTextNode('Not sent \u2014 '));
+        var retry = el('button', null, 'Try again');
+        retry.addEventListener('click', function () { m.entry.retry = true; m.entry.status = 'queued'; flush(); });
+        note.appendChild(retry);
+        b.appendChild(note);
+        b.style.maxWidth = '78%';
+      } else if (m.entry) {
+        b.style.opacity = '.55';
+      }
+      return b;
+    }
+
+    var lastAt = 0, lastAuthor = '';
+    all.forEach(function (m) {
+      if (m.at - lastAt > 30 * 60000) {
+        bubbles.appendChild(el('div', 'dsep t-foot', sepText(m.at)));
+        lastAuthor = '';
+      }
+      lastAt = m.at;
+      var me = m.authorId === 'you';
+      if (me) {
+        bubbles.appendChild(bubbleFor(m));
+      } else {
+        var row = el('div', 'gmsg them');
+        if (m.authorId === lastAuthor) {
+          row.appendChild(el('div', 'gspacer'));
+        } else {
+          row.appendChild(avatarEl(persona(m.authorId), 'sm'));
+        }
+        var body = el('div', 'gbody');
+        if (m.authorId !== lastAuthor) body.appendChild(el('div', 'gname t-foot sec', persona(m.authorId).name));
+        body.appendChild(bubbleFor(m));
+        row.appendChild(body);
+        bubbles.appendChild(row);
+      }
+      lastAuthor = m.authorId;
+    });
+    if (!all.length) {
+      bubbles.appendChild(el('p', 't-sub quiet', 'Say something \u2014 the room writes back.'));
+    }
+    host.appendChild(bubbles);
+
+    var picker = el('div', 'gpick');
+    picker.hidden = true;
+    var composer = el('div', 'dm-composer');
+    var input = el('input', 'dm-in');
+    input.type = 'text';
+    input.placeholder = 'Message the group';
+    input.maxLength = 500;
+    input.autocomplete = 'off';
+    var key = 'g:' + g.id;
+    input.value = state.drafts[key] || '';
+    var send = el('button', 'sendbtn');
+    send.setAttribute('aria-label', 'Send');
+    send.innerHTML = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 13V3.5M8 3.5 3.5 8M8 3.5 12.5 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    send.disabled = !input.value.trim();
+
+    function refreshPicker() {
+      var value = input.value;
+      var at = value.lastIndexOf('@');
+      var active = at >= 0 && !/[\s]/.test(value.slice(at + 1));
+      picker.hidden = !active;
+      if (!active) return;
+      var word = value.slice(at + 1).toLowerCase();
+      picker.textContent = '';
+      kids.forEach(function (id) {
+        var p = persona(id);
+        if (word && p.handle.toLowerCase().indexOf(word) !== 0 && p.name.toLowerCase().indexOf(word) !== 0) return;
+        var chip = el('button', 'gchip', '@' + p.handle);
+        chip.addEventListener('click', function () {
+          input.value = value.slice(0, at) + '@' + p.handle + ' ';
+          state.drafts[key] = input.value;
+          send.disabled = !input.value.trim();
+          picker.hidden = true;
+          input.focus();
+        });
+        picker.appendChild(chip);
+      });
+    }
+    input.addEventListener('input', function () {
+      state.drafts[key] = input.value;
+      send.disabled = !input.value.trim();
+      refreshPicker();
+    });
+    input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') sendMsg(); });
+    composer.appendChild(input);
+    send.addEventListener('click', sendMsg);
+    composer.appendChild(send);
+    host.appendChild(picker);
+    host.appendChild(composer);
+
+    function sendMsg() {
+      var text = input.value.trim();
+      if (!text) return;
+      queue('group_send', { groupId: g.id, text: text });
+      state.drafts[key] = '';
+      input.value = '';
+      send.disabled = true;
+      picker.hidden = true;
+      render();
+      flush();
+    }
+    requestAnimationFrame(function () {
+      if (state.focusDm) { input.focus(); state.focusDm = false; }
+      composer.scrollIntoView({ block: 'end' });
+    });
   }
 
   function renderThread() {
@@ -2170,8 +2524,9 @@ const WINDOW_JS = `
 
   function openGrow(mode) {
     if (state.sheet) closePerson();
-    state.grow = mode === 'org' ? 'org' : 'person';
+    state.grow = mode === 'org' ? 'org' : mode === 'group' ? 'group' : 'person';
     state.growBusy = false;
+    state.growMembers = [];
     document.body.style.overflow = 'hidden';
     $('grow-sheet').hidden = false;
     renderGrow();
@@ -2382,10 +2737,81 @@ const WINDOW_JS = `
       host.appendChild(f.wrap);
       return f.input;
     }
-    $('grow-title').textContent = mode === 'org' ? 'Add a newsroom' : 'Add a person';
+    $('grow-title').textContent = mode === 'org' ? 'Add a newsroom' : mode === 'group' ? 'New Group' : 'Add a person';
     $('grow-sub').textContent = mode === 'org'
       ? 'A square profile, with real headlines from a public feed.'
-      : 'Someone new moves in. They follow you, and the world starts noticing them.';
+      : mode === 'group'
+        ? 'A room with its own topic. They see the name, the topic, and each other.'
+        : 'Someone new moves in. They follow you, and the world starts noticing them.';
+
+    if (mode === 'group') {
+      var gform = el('div', 'grow-form');
+      var nameIn = addField(gform, 'gname', 'Name', 'Weekend plans', 60, false);
+      var topicIn = addField(gform, 'gtopic', 'Topic (optional)', 'what the room is about', 140, false);
+      var pick = el('div', 'grow-members');
+      pick.appendChild(el('h3', 'sheet-k', 'Who is in it'));
+      var people = Object.keys(state.personas).map(function (id) { return state.personas[id]; })
+        .filter(function (p) { return (p.kind || 'person') !== 'org'; })
+        .sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+      people.forEach(function (p) {
+        var row = el('label', 'grow-member');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.addEventListener('change', function () {
+          var i = state.growMembers.indexOf(p.id);
+          if (cb.checked && i < 0) state.growMembers.push(p.id);
+          if (!cb.checked && i >= 0) state.growMembers.splice(i, 1);
+        });
+        row.appendChild(cb);
+        row.appendChild(el('span', 'grow-member-name', p.name));
+        row.appendChild(el('span', 't-foot sec', '@' + (p.handle || '')));
+        pick.appendChild(row);
+      });
+      gform.appendChild(pick);
+      body.appendChild(gform);
+      var gerr = el('p', 't-foot err grow-err');
+      gerr.hidden = true;
+      body.appendChild(gerr);
+      var create = el('button', 'mini accent grow-submit', 'Create group');
+      create.addEventListener('click', function () {
+        if (state.growBusy) return;
+        var name = nameIn.value.trim();
+        var topic = topicIn.value.trim();
+        if (!name) { gerr.textContent = 'Give the group a name.'; gerr.hidden = false; return; }
+        if (!state.growMembers.length) { gerr.textContent = 'Add at least one person.'; gerr.hidden = false; return; }
+        gerr.hidden = true;
+        state.growBusy = true;
+        create.disabled = true;
+        create.textContent = 'Creating\u2026';
+        actApi('group_create', { name: name, topic: topic, members: state.growMembers.slice() }).then(function (r) {
+          state.growBusy = false;
+          if (r.status === 200) {
+            var id = r.data && r.data.id;
+            if (id) {
+              state.groups[id] = { id: id, name: name, topic: topic, members: state.growMembers.slice() };
+            }
+            closeGrow();
+            if (id) openGroupThread(id); else { switchTab('dms'); render(); }
+            kickSync(4);
+          } else {
+            create.disabled = false;
+            create.textContent = 'Create group';
+            gerr.textContent = r.data && r.data.error
+              ? 'Not created \u2014 ' + r.data.error + '.'
+              : 'Not created \u2014 the world did not answer.';
+            gerr.hidden = false;
+          }
+        }).catch(function () {
+          state.growBusy = false;
+          create.disabled = false;
+          create.textContent = 'Create group';
+          gerr.textContent = 'Not created \u2014 the world did not answer.';
+          gerr.hidden = false;
+        });
+      });
+      body.appendChild(create);
+      return;
+    }
 
     if (mode === 'org') {
       body.appendChild(el('p', 't-foot sec grow-note',
@@ -2663,8 +3089,9 @@ const WINDOW_JS = `
     state.cursor = 0;
     state.posts = {}; state.replies = {}; state.personas = {}; state.follows = {};
     state.stories = {}; state.signals = {}; state.dms = {}; state.asks = {};
+    state.groups = {}; state.gmsgs = {};
     state.log = [];
-    state.me = null; state.worldInfo = null; state.thread = null;
+    state.me = null; state.worldInfo = null; state.thread = null; state.gthread = null; state.groupPanel = false;
     state.presence = {}; state.presenceAt = 0; state.presenceBusy = false; state.presenceError = false;
     state.notes = []; state.notesAt = 0; state.notesBusy = false; state.notesError = false;
     state.noteSending = false; state.noteRemoving = null;
@@ -2708,9 +3135,10 @@ const WINDOW_JS = `
     state.world = ''; state.key = ''; state.cursor = 0;
     state.posts = {}; state.replies = {}; state.personas = {}; state.follows = {};
     state.stories = {}; state.signals = {}; state.dms = {}; state.asks = {};
+    state.groups = {}; state.gmsgs = {};
     state.log = [];
     state.me = null; state.worldInfo = null; state.outbox = [];
-    state.thread = null; state.everSynced = false; state.lastSync = 0;
+    state.thread = null; state.gthread = null; state.groupPanel = false; state.everSynced = false; state.lastSync = 0;
     state.presence = {}; state.presenceAt = 0; state.presenceBusy = false; state.presenceError = false;
     state.notes = []; state.notesAt = 0; state.notesBusy = false; state.notesError = false;
     state.noteSending = false; state.noteRemoving = null;
@@ -2988,7 +3416,7 @@ export function windowPage(): string {
 
     <section id="pane-dms" hidden>
       <div id="dm-list"></div>
-      <p id="dm-empty" class="t-sub quiet" hidden>No messages yet.<br><span class="t-foot sec sub" style="display:inline-block">Tap someone in People to start one.</span></p>
+      <p id="dm-empty" class="t-sub quiet" hidden>No messages yet.<br><span class="t-foot sec sub" style="display:inline-block">Tap someone in People to start one — or make a group above.</span></p>
       <div id="dm-thread" hidden></div>
     </section>
 
