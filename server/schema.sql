@@ -1,6 +1,3 @@
--- Only Human — world database (D1 / SQLite).
--- One world per human; every table is keyed by world_id.
-
 CREATE TABLE IF NOT EXISTS worlds (
   id             TEXT PRIMARY KEY,
   created_at     INTEGER NOT NULL,
@@ -95,15 +92,15 @@ CREATE TABLE IF NOT EXISTS comment_asks (
   post_id    TEXT NOT NULL,
   persona_id TEXT NOT NULL,
   at         INTEGER NOT NULL,
-  state      TEXT NOT NULL DEFAULT 'pending',   -- pending | approved | posted | skipped
+  state      TEXT NOT NULL DEFAULT 'pending',
   PRIMARY KEY (world_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS follows (
-  world_id   TEXT NOT NULL,
-  persona_id TEXT NOT NULL,
-  following  INTEGER NOT NULL DEFAULT 0,        -- you follow them
-  followed_by INTEGER NOT NULL DEFAULT 0,       -- they follow you
+  world_id    TEXT NOT NULL,
+  persona_id  TEXT NOT NULL,
+  following   INTEGER NOT NULL DEFAULT 0,
+  followed_by INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (world_id, persona_id)
 );
 
@@ -121,23 +118,21 @@ CREATE TABLE IF NOT EXISTS activity (
 CREATE TABLE IF NOT EXISTS context (
   world_id TEXT NOT NULL,
   id       TEXT NOT NULL,
-  source   TEXT NOT NULL,      -- 'you' | 'weather' | 'news' …
+  source   TEXT NOT NULL,
   text     TEXT NOT NULL,
   at       INTEGER NOT NULL,
   active   INTEGER NOT NULL DEFAULT 1,
   PRIMARY KEY (world_id, id)
 );
 
--- The sync feed: one row per thing the app should learn about.
 CREATE TABLE IF NOT EXISTS outbox (
   seq        INTEGER PRIMARY KEY AUTOINCREMENT,
   world_id   TEXT NOT NULL,
-  kind       TEXT NOT NULL,    -- post | reply | story | dm | ask | signal | follow | persona
+  kind       TEXT NOT NULL,
   payload    TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
 
--- Scheduled work: world ticks, replies, asks, warm-up writes.
 CREATE TABLE IF NOT EXISTS jobs (
   id         TEXT PRIMARY KEY,
   world_id   TEXT NOT NULL,
@@ -148,7 +143,6 @@ CREATE TABLE IF NOT EXISTS jobs (
   created_at INTEGER NOT NULL
 );
 
--- Command-id dedupe so client retries are safe.
 CREATE TABLE IF NOT EXISTS commands (
   world_id   TEXT NOT NULL,
   command_id TEXT NOT NULL,

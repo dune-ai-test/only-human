@@ -63,12 +63,14 @@ never overwritten by deploys.
    database* → name it `only-human-worlds` (no ID to copy — the binding in
    step 4 picks it from a list).
 2. **Create the tables.** Open the database → **Console** tab → paste the
-   whole of `server/schema.sql` → Execute. The **Tables** tab should then
-   list them all (`worlds`, `personas`, `posts`, `replies`, `stories`,
-   `dms`, `comment_asks`, `follows`, `activity`, `outbox`, `jobs`,
-   `commands`, …). If the console complains, re-run without the `--`
-   comment lines — every statement is `IF NOT EXISTS`, so running it twice
-   is harmless.
+   whole of `server/schema.sql` → Execute. The file deliberately contains
+   **no `--` comments**: the dashboard console flattens the SQL onto one
+   line, and a comment would swallow the rest of its statement (SQLite then
+   reports `incomplete input`). Every statement is `IF NOT EXISTS`, so
+   running it twice is harmless. The **Tables** tab should list all 15:
+   `worlds`, `world_keys`, `personas`, `relations`, `posts`, `replies`,
+   `stories`, `dms`, `comment_asks`, `follows`, `activity`, `context`,
+   `outbox`, `jobs`, `commands`.
 3. **Create the Worker from the repo.** Cloudflare dashboard → *Workers &
    Pages → Create application → Get started next to "Import a repository"*
    → connect GitHub → pick `dune-ai-test/only-human`, then set:
