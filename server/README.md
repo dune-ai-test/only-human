@@ -80,7 +80,9 @@ never overwritten by deploys.
 
    Save and Deploy. The build log ends with the live URL —
    `https://only-human-worlds.<you>.workers.dev`. From then on, every push
-   to `world-server` redeploys automatically (pushes to `main` do not).
+   to `world-server` rebuilds and redeploys automatically — docs-only edits
+   included (pushes to `main` do not). Progress shows under the Worker's
+   **Deployments** tab.
 4. **Bind the database.** Worker → **Settings → Bindings → Add binding →
    D1 database**: variable name `DB`, database `only-human-worlds`. Save.
    (If `db` stays `false` in step 7, run any deploy — *Deployments →
