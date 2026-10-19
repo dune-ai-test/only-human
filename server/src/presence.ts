@@ -181,6 +181,7 @@ function buildSystem(world: WorldRow, t: number): string {
     "Not everyone is doing something interesting. People wait, commute, work, eat, queue, and fall asleep on the sofa.",
     "Keep it physically plausible. Avoid brand names, measurements, and technical parts; if a hobby needs a specific tool to make sense, choose a simpler action.",
     "Keep each person in or near their own city. Do not invent drama, weather events, or meetings with other people unless their recent post implies it.",
+    "Use the previous place only for continuity; they may have moved since.",
     "Never mention the app or the content they make. Do not use the words post, posting, story, feed, app, online, phone, or being watched. Describe their life, not their timeline.",
     "Do not use the person's name in doing.",
     `place must be exactly one of: ${PLACES.join(", ")}.`,
@@ -231,7 +232,10 @@ async function buildUser(
     }
     const prev = cached.get(p.id);
     if (prev) {
-      lines.push(`  a moment ago: ${prev.place} \u2014 ${clip(prev.doing, 90)} (${agoText(t - prev.at)})`);
+      // Only the place travels forward. When the previous sentence was in the
+      // prompt, the model sometimes copied it verbatim instead of looking at
+      // the new minute; a place is enough to keep them from teleporting.
+      lines.push(`  a moment ago they were: ${prev.place} (${agoText(t - prev.at)})`);
     }
   }
   lines.push("");
