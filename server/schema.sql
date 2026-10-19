@@ -125,6 +125,32 @@ CREATE TABLE IF NOT EXISTS context (
   PRIMARY KEY (world_id, id)
 );
 
+CREATE TABLE IF NOT EXISTS orgs (
+  world_id      TEXT NOT NULL,
+  id            TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  handle        TEXT NOT NULL,
+  kind          TEXT NOT NULL DEFAULT 'news',
+  bio           TEXT NOT NULL DEFAULT '',
+  city          TEXT NOT NULL DEFAULT '',
+  color         TEXT NOT NULL DEFAULT '#1D1D1F',
+  monogram      TEXT NOT NULL DEFAULT '',
+  feed_url      TEXT,
+  active        INTEGER NOT NULL DEFAULT 1,
+  created_at    INTEGER NOT NULL,
+  last_fetch_at INTEGER NOT NULL DEFAULT 0,
+  last_post_at  INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (world_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS news_seen (
+  world_id TEXT NOT NULL,
+  org_id   TEXT NOT NULL,
+  url      TEXT NOT NULL,
+  seen_at  INTEGER NOT NULL,
+  PRIMARY KEY (world_id, org_id, url)
+);
+
 CREATE TABLE IF NOT EXISTS outbox (
   seq        INTEGER PRIMARY KEY AUTOINCREMENT,
   world_id   TEXT NOT NULL,

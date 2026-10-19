@@ -107,6 +107,24 @@ export interface NoteRow {
   at: number;
 }
 
+/** A newsroom or other organization. Separate from the AI cast. */
+export interface OrgRow {
+  world_id: string;
+  id: string;
+  name: string;
+  handle: string;
+  kind: string;
+  bio: string;
+  city: string;
+  color: string;
+  monogram: string;
+  feed_url: string | null;
+  active: number;
+  created_at: number;
+  last_fetch_at: number;
+  last_post_at: number;
+}
+
 export interface ActivityRow {
   world_id: string;
   id: string;

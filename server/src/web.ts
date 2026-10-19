@@ -325,11 +325,21 @@ body.plain .bar { background: var(--bar-plain); }
 .av.sm { width: 28px; height: 28px; font-size: 11px; letter-spacing: .2px; }
 .av.md { width: 36px; height: 36px; font-size: 14px; }
 .av.lg { width: 56px; height: 56px; font-size: 20px; }
+.av.org { border-radius: 10px; letter-spacing: .18px; }
+.av.sm.org { border-radius: 7px; }
+.av.lg.org { border-radius: 13px; }
 .post-body { flex: 1; min-width: 0; }
 .post-body header { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
 .name { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.41px; }
 .who { font-size: 15px; line-height: 20px; letter-spacing: -.24px; color: var(--label2); }
 .text { margin: 3px 0 0; font-size: 16px; line-height: 22px; letter-spacing: -.32px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.news-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 7px; font-size: 13px; line-height: 18px; font-weight: 600;
+  letter-spacing: -.08px; color: var(--accent);
+}
+.news-link:hover { text-decoration: underline; }
+.news-link svg { display: block; }
 .counts { margin-top: 6px; font-size: 13px; line-height: 18px; letter-spacing: -.08px; color: var(--label2); }
 .actions { display: flex; align-items: center; gap: 18px; margin-top: 7px; }
 .act {
@@ -403,6 +413,11 @@ body.plain .bar { background: var(--bar-plain); }
 /* console: people */
 .person { display: flex; gap: 12px; padding: 13px 0; align-items: center; cursor: pointer; }
 .person + .person { border-top: .5px solid var(--sep); }
+.people-k {
+  margin: 28px 2px 4px; font-size: 12px; line-height: 16px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--label3);
+}
+.people-sub { margin: 0 2px 8px; }
 .person-main { flex: 1; min-width: 0; }
 .person-bio { margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .person-bio .place-ic { vertical-align: -2px; margin-right: 3px; color: var(--label3); }
@@ -542,6 +557,71 @@ body.plain .bar { background: var(--bar-plain); }
   padding: 9px 16px; cursor: pointer;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
 }
+
+/* console: the right rail */
+.rail { display: none; }
+.rail-card {
+  background: var(--card); border-radius: 12px; padding: 14px 16px;
+  margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+.rail-title { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -.24px; }
+.rail-sub { margin-top: 3px; }
+.rail-action {
+  display: flex; width: 100%; align-items: center; gap: 8px;
+  padding: 11px 0; border: 0; border-top: .5px solid var(--sep);
+  background: none; text-align: left; color: var(--label);
+  font-size: 14px; line-height: 19px; font-weight: 500; letter-spacing: -.15px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.rail-action:first-of-type { border-top: 0; margin-top: 5px; }
+.rail-action .plus { margin-left: auto; color: var(--accent); font-size: 19px; line-height: 1; font-weight: 400; }
+.rail-org, .rail-person { display: flex; gap: 9px; align-items: center; padding: 9px 0; border-top: .5px solid var(--sep); }
+.rail-org:first-child, .rail-person:first-child { border-top: 0; }
+.rail-main { flex: 1; min-width: 0; }
+.rail-name {
+  font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -.15px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rail-sub2 { font-size: 12px; line-height: 16px; color: var(--label2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rail .mini { height: 28px; padding: 0 12px; font-size: 13px; }
+.rail-empty { padding: 8px 0 2px; }
+.world-grow { margin-top: 26px; padding-top: 18px; border-top: .5px solid var(--sep); }
+.world-grow .sheet-k { margin-bottom: 6px; }
+.world-grow .rail-action { padding: 12px 2px; }
+.world-grow .rail-action:first-of-type { border-top: .5px solid var(--sep); }
+
+/* console: add a person or a newsroom */
+.grow-form { margin-top: 16px; }
+.grow-field { margin-top: 12px; }
+.grow-field:first-child { margin-top: 0; }
+.grow-field label { display: block; margin: 0 2px 6px; }
+.grow-field input, .grow-field textarea {
+  width: 100%; border: 0; border-radius: 10px;
+  background: var(--card2); color: var(--label);
+  padding: 0 14px; font-size: 15px; letter-spacing: .2px;
+}
+.grow-field input { height: 44px; }
+.grow-field textarea { min-height: 76px; padding: 12px 14px; resize: none; font: inherit; line-height: 21px; }
+.grow-field input::placeholder, .grow-field textarea::placeholder { color: var(--label3); }
+.grow-field input:focus, .grow-field textarea:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.grow-orgs { margin-top: 14px; }
+.grow-org { display: flex; gap: 10px; align-items: center; padding: 11px 0; border-top: .5px solid var(--sep); }
+.grow-org:first-child { border-top: 0; }
+.grow-org .mini { margin-left: auto; }
+.grow-note { margin-top: 12px; }
+@media (min-width: 980px) {
+  .page.window { max-width: 928px; }
+  #console {
+    display: grid; grid-template-columns: minmax(0, 560px) 296px; column-gap: 24px; align-items: start;
+  }
+  #console[hidden] { display: none; }
+  #console > *:not(.rail) { grid-column: 1; }
+  #console > .rail {
+    display: block; grid-column: 2; grid-row: 1 / span 100;
+    position: sticky; top: 76px;
+  }
+  .world-grow { display: none; }
+}
 `;
 
 function head(title: string, description: string, plainBg: boolean): string {
@@ -668,6 +748,28 @@ const WINDOW_JS = `
     asleep: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>',
     elsewhere: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg>'
   };
+  var ORG_PRESETS = [
+    {
+      id: 'org-guardian', name: 'The Guardian', handle: 'guardian', monogram: 'G', color: '#052962', city: 'London',
+      occupation: 'newsroom', bio: 'World news, reported and edited in London. Headlines land here as they happen.',
+      blurb: 'World news, live from London.'
+    },
+    {
+      id: 'org-bbc', name: 'BBC News', handle: 'bbcnews', monogram: 'BBC', color: '#B80000', city: 'London',
+      occupation: 'newsroom', bio: 'Breaking news and world stories from BBC News.',
+      blurb: 'World news as it happens.'
+    },
+    {
+      id: 'org-npr', name: 'NPR', handle: 'npr', monogram: 'NPR', color: '#111111', city: 'Washington',
+      occupation: 'newsroom', bio: 'News and culture from across America, as it happens.',
+      blurb: 'News and culture from America.'
+    },
+    {
+      id: 'org-aljazeera', name: 'Al Jazeera', handle: 'aljazeera', monogram: 'AJ', color: '#B8860B', city: 'Doha',
+      occupation: 'newsroom', bio: 'Stories and news from across the world.',
+      blurb: 'Stories from across the world.'
+    }
+  ];
 
   // ---- state --------------------------------------------------------------
   var state = {
@@ -684,7 +786,7 @@ const WINDOW_JS = `
     presence: {}, presenceAt: 0, presenceBusy: false, presenceError: false,
     notes: [], notesAt: 0, notesBusy: false, notesError: false,
     noteSending: false, noteRemoving: null,
-    sheet: null, wantSheet: null,
+    sheet: null, wantSheet: null, grow: null, growBusy: false,
     tab: 'feed', thread: null,
     replyOpen: null, focusReply: null, focusDm: false, wantPersona: null,
     newCount: 0
@@ -791,14 +893,36 @@ const WINDOW_JS = `
   function persona(id) {
     if (id === 'you') return mePersona();
     var p = state.personas[id];
-    if (p) return { name: p.name || p.handle || id, handle: p.handle || id, gradient: p.gradient, bio: p.bio || '', joinedYear: p.joinedYear || '' };
-    return { name: id, handle: id, gradient: GRAY, bio: '', joinedYear: '' };
+    if (p) return {
+      name: p.name || p.handle || id,
+      handle: p.handle || id,
+      gradient: p.gradient,
+      bio: p.bio || '',
+      joinedYear: p.joinedYear || '',
+      occupation: p.occupation || '',
+      location: p.location || '',
+      kind: p.kind || '',
+      monogram: p.monogram || '',
+      color: p.color || ''
+    };
+    return { name: id, handle: id, gradient: GRAY, bio: '', joinedYear: '', occupation: '', location: '', kind: '', monogram: '', color: '' };
   }
   function avatarEl(who, sizeCls) {
-    var av = el('div', 'av' + (sizeCls ? ' ' + sizeCls : ''), initials(who.name));
+    var isOrg = who.kind === 'org';
+    var label = isOrg ? (who.monogram || initials(who.name)) : initials(who.name);
+    var av = el('div', 'av' + (sizeCls ? ' ' + sizeCls : '') + (isOrg ? ' org' : ''), label);
     var g = (who.gradient && who.gradient.length >= 2) ? who.gradient : GRAY;
-    av.style.setProperty('--g1', g[0]);
-    av.style.setProperty('--g2', g[1]);
+    if (isOrg) {
+      var c = who.color || g[0] || '#1D1D1F';
+      av.style.setProperty('--g1', c);
+      av.style.setProperty('--g2', c);
+      if (label.length >= 3) {
+        av.style.fontSize = sizeCls === 'lg' ? '16px' : sizeCls === 'md' ? '10px' : sizeCls === 'sm' ? '8px' : '11px';
+      }
+    } else {
+      av.style.setProperty('--g1', g[0]);
+      av.style.setProperty('--g2', g[1]);
+    }
     return av;
   }
   function placeGlyph(place) {
@@ -1166,18 +1290,28 @@ const WINDOW_JS = `
 
   function postEl(p, entry) {
     var who = persona(p.authorId);
-    var wrap = el('article', 'post' + (entry ? ' opt' : ''));
+    var isNews = !entry && !!p.url && (p.news === true || who.kind === 'org');
+    var wrap = el('article', 'post' + (entry ? ' opt' : '') + (isNews ? ' news' : ''));
     wrap.appendChild(avatarEl(who));
 
     var body = el('div', 'post-body');
     var header = el('header');
     header.appendChild(el('span', 'name', who.name));
-    var meta = el('span', 'who', '@' + who.handle + ' \\u00b7 ' + ago(p.createdAt));
-    state.times.push({ el: meta, at: p.createdAt, prefix: '@' + who.handle + ' \\u00b7 ' });
+    var metaPrefix = isNews ? 'News \\u00b7 ' : '@' + who.handle + ' \\u00b7 ';
+    var meta = el('span', 'who', metaPrefix + ago(p.createdAt));
+    state.times.push({ el: meta, at: p.createdAt, prefix: metaPrefix });
     header.appendChild(meta);
     body.appendChild(header);
 
     body.appendChild(el('p', 'text', p.text));
+
+    if (isNews) {
+      var source = el('a', 'news-link', 'Read at ' + (p.source || who.name) + ' \\u2197');
+      source.href = p.url;
+      source.target = '_blank';
+      source.rel = 'noopener noreferrer';
+      body.appendChild(source);
+    }
 
     if (entry) {
       var note = el('div', 'fail-note');
@@ -1628,6 +1762,7 @@ const WINDOW_JS = `
     document.body.style.overflow = 'hidden';
     $('sheet').hidden = false;
     renderSheet();
+    if ((state.personas[id].kind || '') === 'org') return;
     var p = state.presence[id];
     if (!p || Date.now() - p.at > 15 * 60000) fetchPresence(false, id);
   }
@@ -1673,7 +1808,9 @@ const WINDOW_JS = `
     var host = $('now');
     if (!host) return;
     host.textContent = '';
-    var ids = Object.keys(state.personas);
+    var ids = Object.keys(state.personas).filter(function (id) {
+      return (state.personas[id].kind || '') !== 'org';
+    });
     var groups = { out: [], work: [], home: [], asleep: [], unknown: [] };
     ids.forEach(function (id) { groups[presenceGroup(state.presence[id])].push(id); });
     var have = ids.some(function (id) { return !!state.presence[id]; });
@@ -1725,7 +1862,8 @@ const WINDOW_JS = `
     var id = state.sheet;
     var who = persona(id);
     var raw = state.personas[id] || {};
-    var p = state.presence[id];
+    var isOrg = (raw.kind || '') === 'org';
+    var p = isOrg ? null : state.presence[id];
 
     var av = $('sheet-av');
     av.textContent = '';
@@ -1742,7 +1880,8 @@ const WINDOW_JS = `
 
     var now = $('sheet-now');
     now.textContent = '';
-    if (p) {
+    now.hidden = isOrg;
+    if (!isOrg && p) {
       var top = el('div', 'sheet-now-top');
       top.appendChild(placeGlyph(p.place));
       top.appendChild(el('div', 'sheet-doing', p.doing));
@@ -1757,7 +1896,7 @@ const WINDOW_JS = `
       again.addEventListener('click', function (ev) { ev.stopPropagation(); fetchPresence(true, id); });
       meta.appendChild(again);
       now.appendChild(meta);
-    } else {
+    } else if (!isOrg) {
       var top2 = el('div', 'sheet-now-top');
       top2.appendChild(placeGlyph('elsewhere'));
       top2.appendChild(el('div', 'sheet-doing' + (state.presenceBusy ? ' sec' : ''),
@@ -1789,9 +1928,17 @@ const WINDOW_JS = `
         var row = el('div', 'sheet-post');
         row.appendChild(el('div', 'sp-t', post.text));
         row.appendChild(el('div', 'sp-m t-foot sec', ago(post.createdAt)));
+        if (isOrg && post.url) {
+          var link = el('a', 'news-link', 'Read at ' + (post.source || who.name) + ' \u2197');
+          link.href = post.url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          row.appendChild(link);
+        }
         ph.appendChild(row);
       });
     }
+    $('sheet-msg').hidden = isOrg;
 
     var f = state.follows[id] || { following: false, followedBy: false };
     $('sheet-follow').textContent = f.following ? 'Following' : 'Follow';
@@ -1802,30 +1949,14 @@ const WINDOW_JS = `
   function renderPeople() {
     var host = $('people');
     host.textContent = '';
-    var ids = Object.keys(state.personas);
-    ids.sort(function (a, b) { return String(state.personas[a].name).localeCompare(String(state.personas[b].name)); });
-    ids.forEach(function (id) {
-      var p = state.personas[id];
-      var who = persona(id);
-      var f = state.follows[id] || { following: false, followedBy: false };
-      var row = el('div', 'person');
-      row.appendChild(avatarEl(who));
-      var main = el('div', 'person-main');
-      var line = el('div');
-      line.appendChild(el('span', 'name', who.name));
-      var sub = '@' + who.handle + (f.followedBy ? ' \u00b7 follows you' : '');
-      line.appendChild(el('span', 'who', ' ' + sub));
-      main.appendChild(line);
-      var pr = state.presence[id];
-      if (pr) {
-        var live = el('div', 'person-bio t-sub sec');
-        live.appendChild(placeGlyph(pr.place));
-        live.appendChild(document.createTextNode(' ' + pr.doing));
-        main.appendChild(live);
-      } else if (p.bio) {
-        main.appendChild(el('div', 'person-bio t-sub sec', p.bio));
-      }
-      row.appendChild(main);
+    var all = Object.keys(state.personas);
+    all.sort(function (a, b) { return String(state.personas[a].name).localeCompare(String(state.personas[b].name)); });
+    var people = all.filter(function (id) { return (state.personas[id].kind || '') !== 'org'; });
+    var orgs = all.filter(function (id) { return (state.personas[id].kind || '') === 'org'; });
+
+    function followBtn(id) {
+      var f = state.follows[id] || { personaId: id, following: false, followedBy: false };
+      state.follows[id] = f;
       var btn = el('button', 'follow-btn ' + (f.following ? 'on' : 'off'), f.following ? 'Following' : 'Follow');
       btn.addEventListener('click', function (ev) {
         ev.stopPropagation();
@@ -1837,10 +1968,42 @@ const WINDOW_JS = `
           else kickSync(4);
         });
       });
-      row.appendChild(btn);
+      return btn;
+    }
+
+    function personRow(id, isOrg) {
+      var p = state.personas[id];
+      var who = persona(id);
+      var f = state.follows[id] || { following: false, followedBy: false };
+      var row = el('div', 'person');
+      row.appendChild(avatarEl(who));
+      var main = el('div', 'person-main');
+      var line = el('div');
+      line.appendChild(el('span', 'name', who.name));
+      var sub = '@' + who.handle + (!isOrg && f.followedBy ? ' \u00b7 follows you' : '');
+      line.appendChild(el('span', 'who', ' ' + sub));
+      main.appendChild(line);
+      var pr = isOrg ? null : state.presence[id];
+      if (pr) {
+        var live = el('div', 'person-bio t-sub sec');
+        live.appendChild(placeGlyph(pr.place));
+        live.appendChild(document.createTextNode(' ' + pr.doing));
+        main.appendChild(live);
+      } else if (p.bio) {
+        main.appendChild(el('div', 'person-bio t-sub sec', p.bio));
+      }
+      row.appendChild(main);
+      row.appendChild(followBtn(id));
       row.addEventListener('click', function () { openPerson(id); });
       host.appendChild(row);
-    });
+    }
+
+    people.forEach(function (id) { personRow(id, false); });
+    if (orgs.length) {
+      host.appendChild(el('h2', 'people-k', 'Newsrooms'));
+      host.appendChild(el('p', 't-foot sec people-sub', 'Real headlines from real newsrooms.'));
+      orgs.forEach(function (id) { personRow(id, true); });
+    }
   }
 
   // ---- world notes --------------------------------------------------------
@@ -1969,6 +2132,270 @@ const WINDOW_JS = `
     });
   }
 
+  // ---- grow the world: people and newsrooms --------------------------------
+  function paletteFor(value) {
+    var n = 0;
+    for (var i = 0; i < value.length; i++) n = (n * 31 + value.charCodeAt(i)) >>> 0;
+    return PALETTES[n % PALETTES.length];
+  }
+
+  function growField(labelText, id, placeholder, maxLength, area) {
+    var wrap = el('div', 'grow-field');
+    var label = el('label', 't-foot sec', labelText);
+    label.htmlFor = id;
+    wrap.appendChild(label);
+    var input;
+    if (area) {
+      input = document.createElement('textarea');
+      input.rows = 2;
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.autocomplete = 'off';
+      input.autocapitalize = 'sentences';
+      input.spellcheck = false;
+    }
+    input.id = id;
+    input.placeholder = placeholder || '';
+    input.maxLength = maxLength;
+    wrap.appendChild(input);
+    return { wrap: wrap, input: input };
+  }
+
+  function openGrow(mode) {
+    if (state.sheet) closePerson();
+    state.grow = mode === 'org' ? 'org' : 'person';
+    state.growBusy = false;
+    document.body.style.overflow = 'hidden';
+    $('grow-sheet').hidden = false;
+    renderGrow();
+  }
+
+  function closeGrow() {
+    state.grow = null;
+    state.growBusy = false;
+    if ($('grow-sheet')) $('grow-sheet').hidden = true;
+    if (!state.sheet) document.body.style.overflow = '';
+  }
+
+  function submitNewPerson(fields, btn, err) {
+    if (state.growBusy) return;
+    var name = fields.name.value.trim();
+    var handle = fields.handle.value.replace(/^@+/, '').replace(/\\s+/g, '').trim();
+    var bio = fields.bio.value.trim();
+    var occupation = fields.occupation.value.trim();
+    var location = fields.city.value.trim();
+    var voice = fields.voice.value.trim();
+    if (!name || !handle) {
+      err.textContent = 'A name and a handle \\u2014 both.';
+      err.hidden = false;
+      return;
+    }
+    err.hidden = true;
+    state.growBusy = true;
+    btn.disabled = true;
+    btn.textContent = 'Adding\\u2026';
+    var gradient = paletteFor(name + handle);
+    var joinedYear = String(new Date().getUTCFullYear());
+    var payload = {
+      name: name, handle: handle, bio: bio, occupation: occupation,
+      location: location, voice: voice, gradient: gradient,
+      joinedYear: joinedYear, followerBoost: 0
+    };
+    actApi('create_persona', payload).then(function (r) {
+      state.growBusy = false;
+      if (r.status === 200) {
+        var id = r.data && r.data.id;
+        if (id) {
+          state.personas[id] = {
+            id: id, name: name, handle: handle, bio: bio, occupation: occupation,
+            location: location, voice: voice, gradient: gradient,
+            joinedYear: joinedYear, followerBoost: 0, kind: 'person'
+          };
+          state.follows[id] = state.follows[id] || { personaId: id, following: false, followedBy: true };
+        }
+        closeGrow();
+        switchTab('people');
+        render();
+        kickSync(6);
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Add to the world';
+        err.textContent = r.data && r.data.error
+          ? 'Not added \\u2014 ' + r.data.error + '.'
+          : 'Not added \\u2014 the world did not answer.';
+        err.hidden = false;
+      }
+    }).catch(function () {
+      state.growBusy = false;
+      btn.disabled = false;
+      btn.textContent = 'Add to the world';
+      err.textContent = 'Not added \\u2014 the world did not answer.';
+      err.hidden = false;
+    });
+  }
+
+  function addOrg(preset, btn) {
+    if (state.growBusy) return;
+    state.growBusy = true;
+    if (btn) { btn.disabled = true; btn.textContent = 'Adding\\u2026'; }
+    actApi('create_org', { preset: preset.id }).then(function (r) {
+      state.growBusy = false;
+      if (r.status === 200) {
+        var id = (r.data && r.data.id) || preset.id;
+        state.personas[id] = {
+          id: id, name: preset.name, handle: preset.handle, bio: preset.bio,
+          occupation: preset.occupation, location: preset.city,
+          gradient: [preset.color, preset.color], joinedYear: '', followerBoost: 0,
+          kind: 'org', monogram: preset.monogram, color: preset.color
+        };
+        render();
+        if (state.grow === 'org') renderGrow();
+        kickSync(6);
+      } else if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Try again';
+      }
+    }).catch(function () {
+      state.growBusy = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Try again'; }
+    });
+  }
+
+  function renderGrow() {
+    var sheet = $('grow-sheet');
+    if (!sheet || sheet.hidden) return;
+    var mode = state.grow || 'person';
+    var body = $('grow-body');
+    body.textContent = '';
+    $('grow-title').textContent = mode === 'org' ? 'Add a newsroom' : 'Add a person';
+    $('grow-sub').textContent = mode === 'org'
+      ? 'A square profile, with real headlines from a public feed.'
+      : 'Someone new moves in. They follow you, and the world starts noticing them.';
+
+    if (mode === 'org') {
+      body.appendChild(el('p', 't-foot sec grow-note',
+        'These are real newsrooms. Their headlines are read from public feeds; the world never writes them.'));
+      var list = el('div', 'grow-orgs');
+      ORG_PRESETS.forEach(function (preset) {
+        var added = !!state.personas[preset.id];
+        var row = el('div', 'grow-org');
+        row.appendChild(avatarEl({
+          name: preset.name, kind: 'org', monogram: preset.monogram,
+          color: preset.color, gradient: [preset.color, preset.color]
+        }, 'md'));
+        var main = el('div', 'rail-main');
+        main.appendChild(el('div', 'rail-name', preset.name));
+        main.appendChild(el('div', 'rail-sub2', preset.blurb));
+        row.appendChild(main);
+        var btn = el('button', 'mini ' + (added ? 'ghost' : 'accent'), added ? 'Added' : 'Add');
+        btn.disabled = added;
+        if (!added) btn.addEventListener('click', function () { addOrg(preset, btn); });
+        row.appendChild(btn);
+        list.appendChild(row);
+      });
+      body.appendChild(list);
+      return;
+    }
+
+    var form = el('div', 'grow-form');
+    var fields = {};
+    function addField(key, label, placeholder, max, area) {
+      var f = growField(label, 'grow-' + key, placeholder, max, area);
+      fields[key] = f.input;
+      form.appendChild(f.wrap);
+    }
+    addField('name', 'Name', 'Rosa', 60, false);
+    addField('handle', 'Handle', 'rosa', 30, false);
+    addField('occupation', 'Occupation', 'sound engineer', 80, false);
+    addField('city', 'City', 'Lisbon', 60, false);
+    addField('bio', 'A line about them', 'What they are like, in a sentence.', 200, true);
+    addField('voice', 'How they sound (optional)', 'warm, specific, notices small things', 140, false);
+    fields.handle.autocapitalize = 'off';
+    fields.handle.spellcheck = false;
+    var err = el('p', 't-foot err');
+    err.hidden = true;
+    var btn = el('button', 'btn', 'Add to the world');
+    btn.addEventListener('click', function () { submitNewPerson(fields, btn, err); });
+    form.appendChild(err);
+    form.appendChild(btn);
+    body.appendChild(form);
+  }
+
+  function followFromRail(id, btn) {
+    var f = state.follows[id] || { personaId: id, following: false, followedBy: false };
+    f.following = true;
+    state.follows[id] = f;
+    btn.disabled = true;
+    btn.textContent = 'Following';
+    act('follow', { personaId: id, on: true }).then(function (ok) {
+      if (!ok) f.following = false;
+      render();
+      if (ok) kickSync(4);
+    });
+  }
+
+  function renderRail() {
+    var orgHost = $('org-suggestions');
+    if (orgHost) {
+      orgHost.textContent = '';
+      var left = ORG_PRESETS.filter(function (preset) { return !state.personas[preset.id]; });
+      if (!left.length) {
+        orgHost.appendChild(el('p', 't-foot sec rail-empty', 'Every newsroom is here.'));
+      } else {
+        left.forEach(function (preset) {
+          var row = el('div', 'rail-org');
+          row.appendChild(avatarEl({
+            name: preset.name, kind: 'org', monogram: preset.monogram,
+            color: preset.color, gradient: [preset.color, preset.color]
+          }, 'sm'));
+          var main = el('div', 'rail-main');
+          main.appendChild(el('div', 'rail-name', preset.name));
+          main.appendChild(el('div', 'rail-sub2', preset.blurb));
+          row.appendChild(main);
+          var btn = el('button', 'mini accent', 'Add');
+          btn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            addOrg(preset, btn);
+          });
+          row.appendChild(btn);
+          orgHost.appendChild(row);
+        });
+      }
+    }
+
+    var peopleHost = $('people-suggestions');
+    if (peopleHost) {
+      peopleHost.textContent = '';
+      var ids = Object.keys(state.personas).filter(function (id) {
+        var p = state.personas[id];
+        return (p.kind || '') !== 'org' && !((state.follows[id] || {}).following);
+      });
+      ids.sort(function (a, b) { return String(state.personas[a].name).localeCompare(String(state.personas[b].name)); });
+      if (!ids.length) {
+        peopleHost.appendChild(el('p', 't-foot sec rail-empty', 'You follow everyone here.'));
+      } else {
+        ids.slice(0, 3).forEach(function (id) {
+          var who = persona(id);
+          var row = el('div', 'rail-person');
+          row.appendChild(avatarEl(who, 'sm'));
+          var main = el('div', 'rail-main');
+          main.appendChild(el('div', 'rail-name', who.name));
+          main.appendChild(el('div', 'rail-sub2', '@' + who.handle));
+          row.appendChild(main);
+          var btn = el('button', 'mini ghost', 'Follow');
+          btn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            followFromRail(id, btn);
+          });
+          row.appendChild(btn);
+          row.addEventListener('click', function () { openPerson(id); });
+          peopleHost.appendChild(row);
+        });
+      }
+    }
+  }
+
   // ---- render: all --------------------------------------------------------
   function render() {
     if (!state.everSynced) return;
@@ -1982,6 +2409,7 @@ const WINDOW_JS = `
     renderPeople();
     renderNow();
     renderNotes();
+    renderRail();
     renderSheet();
     renderStatus();
   }
@@ -2075,6 +2503,8 @@ const WINDOW_JS = `
     noteError('');
     state.sheet = null;
     if ($('sheet')) $('sheet').hidden = true;
+    state.grow = null; state.growBusy = false;
+    if ($('grow-sheet')) $('grow-sheet').hidden = true;
     document.body.style.overflow = '';
     state.everSynced = false; state.lastSync = 0;
     loadOutbox();
@@ -2115,6 +2545,8 @@ const WINDOW_JS = `
     state.noteSending = false; state.noteRemoving = null;
     state.sheet = null; state.wantSheet = null;
     if ($('sheet')) $('sheet').hidden = true;
+    state.grow = null; state.growBusy = false;
+    if ($('grow-sheet')) $('grow-sheet').hidden = true;
     document.body.style.overflow = '';
     state.drafts = {}; state.times = [];
     $('world-id').value = ''; $('world-key').value = '';
@@ -2133,6 +2565,11 @@ const WINDOW_JS = `
   });
   $('now-refresh').addEventListener('click', function () { ensurePresence(true); });
   $('notes-refresh').addEventListener('click', function () { fetchNotes(true); });
+  $('grow-close').addEventListener('click', closeGrow);
+  $('grow-back').addEventListener('click', closeGrow);
+  Array.prototype.forEach.call(document.querySelectorAll('[data-grow]'), function (btn) {
+    btn.addEventListener('click', function () { openGrow(btn.getAttribute('data-grow')); });
+  });
   $('sheet-close').addEventListener('click', closePerson);
   $('sheet-back').addEventListener('click', closePerson);
   $('sheet-msg').addEventListener('click', function () {
@@ -2156,7 +2593,9 @@ const WINDOW_JS = `
     });
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && state.sheet) closePerson();
+    if (e.key !== 'Escape') return;
+    if (state.grow) { closeGrow(); return; }
+    if (state.sheet) closePerson();
   });
   $('newpill').addEventListener('click', function () {
     state.newCount = 0;
@@ -2362,6 +2801,12 @@ export function windowPage(): string {
         <p id="notes-empty-s" class="t-foot sec sub">The world is running on its own.</p>
       </div>
       <p id="notes-error" class="t-foot err" hidden>The world did not answer. Try Refresh.</p>
+
+      <div class="world-grow">
+        <h3 class="sheet-k">Grow the world</h3>
+        <button class="rail-action" data-grow="person">Add a person <span class="plus">+</span></button>
+        <button class="rail-action" data-grow="org">Add a newsroom <span class="plus">+</span></button>
+      </div>
     </section>
 
     <section id="pane-log" hidden>
@@ -2384,6 +2829,24 @@ export function windowPage(): string {
       <p class="t-foot sec">The same world the app sees — everything you write here is written for real.</p>
       <button id="forget" class="linkbtn t-foot">Forget this world</button>
     </footer>
+
+    <aside class="rail" aria-label="Grow the world">
+      <div class="rail-card">
+        <h2 class="rail-title">Grow the world</h2>
+        <p class="t-foot sec rail-sub">Add a voice, or a newsroom.</p>
+        <button class="rail-action" data-grow="person">Add a person <span class="plus">+</span></button>
+        <button class="rail-action" data-grow="org">Add a newsroom <span class="plus">+</span></button>
+      </div>
+      <div class="rail-card">
+        <h2 class="rail-title">Newsrooms</h2>
+        <p class="t-foot sec rail-sub">Real headlines, as they happen.</p>
+        <div id="org-suggestions"></div>
+      </div>
+      <div class="rail-card">
+        <h2 class="rail-title">People to follow</h2>
+        <div id="people-suggestions"></div>
+      </div>
+    </aside>
   </section>
 </main>
 <button id="newpill" class="newpill" hidden><span id="newpill-t"></span></button>
@@ -2410,6 +2873,20 @@ export function windowPage(): string {
       <button id="sheet-msg" class="mini accent">Message</button>
       <button id="sheet-follow" class="mini ghost">Follow</button>
     </div>
+  </div>
+</div>
+<div id="grow-sheet" class="sheet" hidden>
+  <div id="grow-back" class="sheet-back"></div>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="grow-title">
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">
+        <h2 id="grow-title" class="sheet-name">Grow the world</h2>
+        <div id="grow-sub" class="t-foot sec sheet-handle"></div>
+      </div>
+      <button id="grow-close" class="sheet-x" aria-label="Close">×</button>
+    </div>
+    <div id="grow-body"></div>
   </div>
 </div>
 <script>${WINDOW_JS}</script>

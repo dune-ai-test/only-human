@@ -165,6 +165,7 @@ export async function insertPost(
   authorId: string,
   text: string,
   idParam?: string,
+  extras?: Record<string, unknown>,
 ): Promise<string> {
   const t = now();
   const id = idParam ?? newId("post");
@@ -181,6 +182,7 @@ export async function insertPost(
     likes: 0,
     replies: 0,
     likedByMe: false,
+    ...(extras ?? {}),
   });
   return id;
 }

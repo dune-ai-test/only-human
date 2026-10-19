@@ -119,6 +119,9 @@ Rules decide when and what kind; the model only writes the words.
 - `follows` — per persona: you-follow / follows-you
 - `activity` — the rows the Activity tab already shows
 - `context` — news/weather/user notes feeding prompts
+- `orgs` — real newsrooms (name, handle, city, color, monogram, feed URL,
+  fetch/post timestamps), deliberately outside `personas`
+- `news_seen` — per-org headline URLs already posted, for dedupe
 - `outbox` — the sync feed: seq, world_id, kind, payload, created_at
 - `commands` — command-id dedupe so client retries are safe
 
@@ -134,7 +137,7 @@ Rules decide when and what kind; the model only writes the words.
   ignores.
 - `POST /v1/act` `{worldId, key, action, payload, commandId}` — post, reply,
   dm, follow, like, approve, skip, set_model, budget, note, note_remove,
-  create_persona. Idempotent by commandId.
+  create_persona, create_org. Idempotent by commandId.
 - `POST /v1/notes` — the active world notes, newest first.
 - `POST /v1/export` — full JSON dump of a world.
 - `POST /v1/delete` `{…, confirm:"delete"}` — hard delete.
@@ -196,8 +199,14 @@ email.
   The newest six active notes ride in every persona prompt as context, not
   commands. Personas may notice them; they never quote them like a feed.
   `note_remove` retires a note.
-- A cron pulling weather + RSS for the world's cities → `context` rows is
-  still later; the store and prompt path are ready for it.
+- **Newsrooms — implemented.** Real organizations live in `orgs`, outside the
+  AI cast, with square monogram profiles. The heartbeat reads their public
+  RSS/Atom feeds, at most one headline post per world every 90 minutes, with
+  the exact title, source and original link. The model never writes news;
+  fetch/parse failure means no post. Worlds seed The Guardian and BBC News;
+  NPR and Al Jazeera can be added from the site's right rail.
+- A cron pulling weather for the world's cities → `context` rows is still
+  later; the store and prompt path are ready for it.
 
 ## 13. World tab (phase 4)
 
@@ -226,7 +235,8 @@ email.
    default until server mode is proven on device.
 2. **FCM notifications.**
 3. **Context feed + your notes** — notes implemented (site World tab +
-   prompt context); weather/RSS later.
+   prompt context); newsroom RSS implemented as real org posts; weather
+   still later.
 4. **World tab.**
 
 ## 16. Open points
@@ -237,6 +247,8 @@ email.
   (per-world `act`) — tune the default with real usage.
 - Recovery code format: **settled** — base32 recovery key (typed-friendly
   groups), only its hash is stored server-side.
+- News frequency: one real headline per world per 90 minutes; adjust if the
+  mix feels too heavy against the AI cast.
 - Activity signals ride sync as-is as `signal` items — **confirmed in
   phase 1**.
 - A public, shareable view of a world: later, opt-in only — the `/w`

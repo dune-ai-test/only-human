@@ -22,6 +22,7 @@ import {
   schedule,
   setFollow,
 } from "./db";
+import { addPresetOrg, ensureNewsSchema, ensureSeedOrgs, getOrg } from "./news";
 import { getPresence } from "./presence";
 import type { AskRow, Env, PostRow, ReplyRow, WorldRow } from "./types";
 import { clamp, dayKey, hashKey, newId, newRecoveryKey, now, QUIET_FROM_MIN, QUIET_TO_MIN, randInt, sameHash, json } from "./util";
@@ -229,6 +230,17 @@ export async function handleCreate(env: Env, body: Record<string, unknown>): Pro
   }
   await schedule(env, worldId, t + randInt(5, 9) * 60_000, "tick", {});
 
+  // A world starts with two real newsrooms; their square profiles and their
+  // headlines travel through the same outbox as everything else.
+  const world = await env.DB.prepare("SELECT * FROM worlds WHERE id = ?").bind(worldId).first<WorldRow>();
+  if (world) {
+    try {
+      await ensureSeedOrgs(env, world);
+    } catch (e) {
+      console.log("org seed", world.id, String(e).slice(0, 200));
+    }
+  }
+
   return json({ worldId, key });
 }
 
@@ -242,6 +254,13 @@ export async function handleSync(env: Env, body: Record<string, unknown>): Promi
   const prevContact = world.last_contact_at;
   await env.DB.prepare("UPDATE worlds SET last_contact_at = ? WHERE id = ?").bind(t, world.id).run();
   await resetDayIfNeeded(env, world);
+  try {
+    await ensureSeedOrgs(env, world);
+  } catch (e) {
+    // Newsrooms are additive: a schema or seed hiccup must never keep the
+    // rest of the world from syncing.
+    console.log("org seed", world.id, String(e).slice(0, 200));
+  }
 
   // Coming back after the world went to sleep: wake it.
   if (prevContact > 0 && t - prevContact > 30 * 86_400_000) {
@@ -382,7 +401,7 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
     case "follow": {
       const personaId = str(p["personaId"]);
       const on = p["on"] === true;
-      const persona = await getPersona(env, world.id, personaId);
+      const persona = (await getPersona(env, world.id, personaId)) ?? (await getOrg(env, world.id, personaId));
       if (!persona) return json({ error: "no such persona" }, 404);
       await setFollow(env, world, personaId, { following: on ? 1 : 0 });
       if (on && Math.random() <= 0.6) {
@@ -531,6 +550,13 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
       return json({ ok: true, id: persona.id });
     }
 
+    case "create_org": {
+      const preset = str(p["preset"]).trim();
+      const result = await addPresetOrg(env, world, preset);
+      if (!result) return json({ error: "unknown newsroom" }, 400);
+      return json({ ok: true, id: result.org.id, duplicate: !result.created });
+    }
+
     default:
       return json({ error: "unknown action" }, 400);
   }
@@ -572,11 +598,14 @@ const TABLES = [
   "follows",
   "activity",
   "context",
+  "orgs",
+  "news_seen",
 ] as const;
 
 export async function handleExport(env: Env, body: Record<string, unknown>): Promise<Response> {
   const world = await authenticate(env, body);
   if (!world) return json({ error: "unauthorized" }, 401);
+  await ensureNewsSchema(env);
   const out: Record<string, unknown> = {};
   for (const tb of TABLES) {
     const res = await env.DB.prepare(`SELECT * FROM ${tb} WHERE world_id = ?`).bind(world.id).all();
@@ -598,6 +627,7 @@ export async function handleDelete(env: Env, body: Record<string, unknown>): Pro
   const world = await authenticate(env, body);
   if (!world) return json({ error: "unauthorized" }, 401);
   if (str(body["confirm"]) !== "delete") return json({ error: "confirm required" }, 400);
+  await ensureNewsSchema(env);
   const stmts = [
     ...TABLES.map((tb) => env.DB.prepare(`DELETE FROM ${tb} WHERE world_id = ?`).bind(world.id)),
     env.DB.prepare("DELETE FROM outbox WHERE world_id = ?").bind(world.id),

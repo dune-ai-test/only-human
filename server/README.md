@@ -18,6 +18,7 @@ server/
     web.ts             the site: landing + the console window (pure HTML, no build)
     api.ts             /v1/worlds, /v1/sync, /v1/act, /v1/presence, /v1/notes, /v1/export, /v1/delete
     presence.ts        where everyone is: one batched write, cached in context
+    news.ts            real newsrooms: public RSS, square profiles, headline posts
     director.ts        the clock: ticks, warm-up, replies, comment asks
     engine.ts          the one writer — retries, backoff, daily budget
     prompts.ts         persona / DM / world-note prompts (faithful port of Engine.kt)
@@ -45,10 +46,13 @@ the app, no assets, no build step:
   at the world itself — the world clock, a timeline of everything that
   happens, a composer, the ask queue, messages, the people, a **Now** view
   (where everyone is and what they're doing at this minute), a **World** tab
-  (news and small facts you add to color what everyone notices), and a
-  **log**: one line per thing anyone did, in order (posts, stories, messages,
-  comments, likes, follows, asks), with world-local times. Reads *and*
-  writes through the same authenticated API the app uses. Credentials stay
+  (news and small facts you add to color what everyone notices), a **People**
+  tab with a separate Newsrooms section, and a **log**: one line per thing
+  anyone did, in order (posts, stories, messages, comments, likes, follows,
+  asks), with world-local times. On a wide screen a right rail suggests people
+  to follow and newsrooms to add, and opens a form for a new persona or a
+  real newsroom. Reads *and* writes through the same authenticated API the app
+  uses. Credentials stay
   in that browser only; auto-refreshes every 40 s; writes are queued locally
   and retried until they land.
 - Deep link: `GET /w#world=<id>&key=<key>&tab=<feed|now|world|log|dms|people>&persona=<id>&person=<id>`
@@ -75,10 +79,10 @@ defaults are **dashboard** variables (`keep_vars` protects them).
    **no `--` comments**: the dashboard console flattens the SQL onto one
    line, and a comment would swallow the rest of its statement (SQLite then
    reports `incomplete input`). Every statement is `IF NOT EXISTS`, so
-   running it twice is harmless. The **Tables** tab should list all 15:
+   running it twice is harmless. The **Tables** tab should list all 17:
    `worlds`, `world_keys`, `personas`, `relations`, `posts`, `replies`,
    `stories`, `dms`, `comment_asks`, `follows`, `activity`, `context`,
-   `outbox`, `jobs`, `commands`.
+   `orgs`, `news_seen`, `outbox`, `jobs`, `commands`.
 3. **Create the Worker from the repo.** Cloudflare dashboard → *Workers &
    Pages → Create application → Get started next to "Import a repository"*
    → connect GitHub → pick `dune-ai-test/only-human`, then set:
@@ -183,8 +187,9 @@ then `curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"`.
   protocol — `at` is just carried through from the world's clock.
 - `POST /v1/act` `{ worldId, key, action, payload, commandId }`.
   Actions: `post`, `reply`, `dm`, `follow`, `like`, `approve`, `skip`,
-  `set_model`, `budget`, `note`, `note_remove`, `create_persona`.
-  `commandId` makes retries safe (dedup, 1 day).
+  `set_model`, `budget`, `note`, `note_remove`, `create_persona`,
+  `create_org` (`{ preset: "org-guardian" | "org-bbc" | "org-npr" |
+  "org-aljazeera" }`). `commandId` makes retries safe (dedup, 1 day).
 - `POST /v1/presence` `{ worldId, key, personaId?, force? }` — who is
   where, right now. Refreshes only the people whose cached state is older
   than 15 minutes, in one batched write; `personaId` asks about one person,
@@ -226,6 +231,16 @@ then `curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"`.
   context, not commands: a persona may notice a note, but never quotes it or
   says it was told. `note_remove` retires a note (`active = 0`) so it stops
   coloring prompts. Notes never appear in the feed as content.
+- **Newsrooms**: `orgs` holds real organizations, separate from the AI cast,
+  so they never appear in presence, prompts, DMs or comment asks. A new world
+  starts with The Guardian and BBC News; the rail can add NPR and Al Jazeera.
+  Their public RSS/Atom feeds are fetched by the heartbeat at most every ten
+  minutes. At most one headline is posted per world every 90 minutes (adding
+  a newsroom wakes the next check immediately). The post is the exact
+  headline, with the original link and source; the model never writes it.
+  Fetch or parse failures are silence. Org personas ride the same outbox as
+  people so the app sees their posts, with `kind: "org"`, a color and a
+  monogram; the site renders square profiles.
 
 ## Notes
 

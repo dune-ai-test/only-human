@@ -2,6 +2,7 @@
 
 import { handleAct, handleCreate, handleDelete, handleExport, handleNotes, handlePresence, handleSync } from "./api";
 import { runDueJobs } from "./director";
+import { runNews } from "./news";
 import type { Env } from "./types";
 import { json } from "./util";
 import { htmlResponse, landingPage, windowPage } from "./web";
@@ -81,5 +82,6 @@ export default {
 
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await runDueJobs(env);
+    await runNews(env);
   },
 } satisfies ExportedHandler<Env>;
