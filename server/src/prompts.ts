@@ -159,11 +159,12 @@ export function draftPersonAsk(world: WorldRow, description: string, handles: st
       "Return ONLY a JSON object, no markdown and no commentary, with exactly these keys: " +
       '{"name":"...","handle":"...","occupation":"...","city":"...","bio":"...","voice":"...","relation":"..."}\n' +
       "Rules: name is a full human name; handle is lowercase letters, digits and underscores only, no @, 2–24 characters, easy to type; " +
-      "occupation is one concrete job or role; city is one real city; bio is one sentence about them, specific and human; " +
-      "voice is one sentence describing how they write — rhythm, what they notice, what they avoid. " +
-      `relation: if the description says who this person is to ${world.me_name} ("my wife", "my brother", "my boss"), repeat it there in the human's own words; ` +
+      "occupation is one concrete job or role; city is one real city; " +
+      "bio is one short sentence about them, third person, under 140 characters, never starting with \"I\"; " +
+      "voice is one short third-person phrase about how they write (\"warm, specific, notices small things\"), under 140 characters; " +
+      `relation: if the description says who this person is to ${world.me_name} ("my wife", "my brother", "my boss"), copy just that short phrase there, in the human's own words — never a sentence, never a name; ` +
       "if the description states no relationship, use an empty string. When a relationship is given, the bio must make it unmistakable — " +
-      `use ${world.me_name}'s name and write a person who truly shares their daily life, not a stranger who just moved in. ` +
+      `mention ${world.me_name} by first name and write a person who truly shares their daily life, not a stranger who just moved in. ` +
       "No hashtags, no emoji, no mention of AI, models, assistants or prompts. " +
       taken,
     user: description,

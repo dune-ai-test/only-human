@@ -2478,7 +2478,7 @@ const WINDOW_JS = `
     addField(form, 'city', 'City', 'Lisbon', 60, false);
     var bio = addField(form, 'bio', 'A line about them', 'What they are like, in a sentence.', 200, true);
     bio.rows = 2;
-    addField(form, 'voice', 'How they sound (optional)', 'warm, specific, notices small things', 140, false);
+    addField(form, 'voice', 'How they sound (optional)', 'warm, specific, notices small things', 200, false);
     fields.handle.autocapitalize = 'off';
     fields.handle.spellcheck = false;
     var err = el('p', 't-foot err');

@@ -66,7 +66,7 @@ interface ParsedPersona {
   relation: string;
 }
 
-function parsePersona(raw: Record<string, unknown>, fallbackId: string, custom = false): ParsedPersona | null {
+function parsePersona(raw: Record<string, unknown>, fallbackId: string, custom = false, meName = ""): ParsedPersona | null {
   const name = str(raw["name"]).trim();
   const handle = str(raw["handle"]).replace(/^@+/, "").trim();
   if (!name || !handle) return null;
@@ -78,25 +78,49 @@ function parsePersona(raw: Record<string, unknown>, fallbackId: string, custom =
     id: str(raw["id"]).trim() || fallbackId,
     name,
     handle,
-    bio: str(raw["bio"]).trim(),
-    occupation: str(raw["occupation"]).trim(),
-    location: str(raw["location"]).trim(),
-    voice: str(raw["voice"]).trim(),
+    bio: clipLine(raw["bio"], 240),
+    occupation: clipLine(raw["occupation"], 80),
+    location: clipLine(raw["location"], 60),
+    voice: clipLine(raw["voice"], 240),
     gradient: JSON.stringify(gradient),
     joinedYear: str(raw["joinedYear"]).trim(),
     followerBoost: Number.isFinite(boost) ? Math.round(boost) : 0,
     custom: custom ? 1 : 0,
-    relation: cleanRelation(raw["relation"]),
+    relation: cleanRelation(raw["relation"], meName),
   };
 }
 
-/** "Who they are to you" — the human's own words ("my wife"), one line only. */
-function cleanRelation(value: unknown): string {
-  return str(value)
-    .replace(/[\r\n"]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 60);
+/** One flat line, cut at a word boundary when long. */
+function clipLine(value: unknown, max: number): string {
+  const s = str(value).replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  if (s.length <= max) return s;
+  const head = s.slice(0, max);
+  const space = head.lastIndexOf(" ");
+  return (space > max * 0.5 ? head.slice(0, space) : head).replace(/[,;:.\-–—]+$/, "").trimEnd();
+}
+
+/** "Who they are to you" — the human's own words ("my wife"), one short phrase. */
+function cleanRelation(value: unknown, meName = ""): string {
+  let s = str(value).replace(/[\r\n"]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  if (meName) {
+    const first = meName.trim().split(/\s+/)[0].toLowerCase();
+    for (const marker of [`${meName.trim().toLowerCase()}'s`, `${first}'s`]) {
+      const at = s.toLowerCase().indexOf(marker);
+      if (at >= 0) {
+        const after = s
+          .slice(at + marker.length)
+          .trim()
+          .split(/\s+/)[0]
+          .replace(/[^\p{L}\p{N}-]/gu, "");
+        if (after) return `my ${after.toLowerCase()}`.slice(0, 40);
+      }
+    }
+  }
+  s = s.replace(/^(?:i'?m|i am)\s+[^,]*[, ]*/i, "").trim();
+  s = s.split(/\s+(?:and|but)\s+|[.;]/i)[0].trim();
+  s = s.replace(/[,;:]+$/, "").trim();
+  return s.slice(0, 40);
 }
 
 // ---- profiles written from a human description --------------------------
@@ -166,7 +190,7 @@ interface DraftOrg {
 
 type Draft = DraftPerson | DraftOrg;
 
-function parseDraft(raw: string, kind: "person" | "org"): Draft | null {
+function parseDraft(raw: string, kind: "person" | "org", meName = ""): Draft | null {
   const text = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -181,17 +205,17 @@ function parseDraft(raw: string, kind: "person" | "org"): Draft | null {
   }
   if (str(obj["error"]).trim()) return null;
 
-  const name = str(obj["name"]).replace(/\s+/g, " ").trim().slice(0, 80);
+  const name = clipLine(obj["name"], 80);
   if (!name) return null;
   const handle = cleanHandle(obj["handle"]) || handleFromName(name);
   if (!handle) return null;
-  const city = str(obj["city"]).replace(/\s+/g, " ").trim().slice(0, 60);
-  const bio = str(obj["bio"]).replace(/\s+/g, " ").trim().slice(0, 220);
+  const city = clipLine(obj["city"], 60);
+  const bio = clipLine(obj["bio"], 200);
 
   if (kind === "person") {
-    const occupation = str(obj["occupation"]).replace(/\s+/g, " ").trim().slice(0, 80);
-    const voice = str(obj["voice"]).replace(/\s+/g, " ").trim().slice(0, 160);
-    const relation = cleanRelation(obj["relation"]);
+    const occupation = clipLine(obj["occupation"], 80);
+    const voice = clipLine(obj["voice"], 200);
+    const relation = cleanRelation(obj["relation"], meName);
     return { name, handle, occupation, city, bio, voice, relation };
   }
 
@@ -686,7 +710,7 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
       const ask = kind === "person" ? draftPersonAsk(world, description, handles) : draftOrgAsk(description, handles);
       const raw = await writeRaw(env, world, ask.system, [{ role: "user", content: ask.user }], 500, null, false, 0.55);
       if (!raw) return json({ error: "the world did not answer" }, 503);
-      const draft = parseDraft(raw, kind);
+      const draft = parseDraft(raw, kind, world.me_name);
       if (!draft) {
         return json(
           { error: kind === "org" ? "couldn't place that newsroom — try its name" : "the world answered in a shape I couldn't use" },
@@ -698,7 +722,7 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
     }
 
     case "create_persona": {
-      const persona = parsePersona(p, newId("custom"), true);
+      const persona = parsePersona(p, newId("custom"), true, world.me_name);
       if (!persona) return json({ error: "name and handle required" }, 400);
       const ins = await env.DB.prepare(
         "INSERT OR IGNORE INTO personas (world_id, id, name, handle, bio, occupation, location, voice, gradient, joined_year, follower_boost, model, custom) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)",
