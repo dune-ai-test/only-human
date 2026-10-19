@@ -102,7 +102,8 @@ function coercePlace(raw: unknown, doing: string): Place {
   return "elsewhere";
 }
 
-function parsePresence(raw: string, allowed: Set<string>): { id: string; place: Place; doing: string }[] {
+function parsePresence(raw: string, targets: string[]): { id: string; place: Place; doing: string }[] {
+  const allowed = new Set(targets);
   let text = raw.trim();
   text = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
 
@@ -132,11 +133,21 @@ function parsePresence(raw: string, allowed: Set<string>): { id: string; place: 
 
   const out: { id: string; place: Place; doing: string }[] = [];
   const seen = new Set<string>();
-  for (const item of parsed) {
+  // If the model malforms exactly one id (it once wrote "work" where a
+  // persona id belonged), the array still has one slot per person in the
+  // order we asked for. Recover that slot, but only when the counts match —
+  // otherwise a shifted list would put one person's day on another.
+  const positional = parsed.length === targets.length;
+  for (let index = 0; index < parsed.length; index++) {
+    const item = parsed[index];
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
-    const id = typeof o["id"] === "string" ? o["id"].trim() : "";
-    if (!allowed.has(id) || seen.has(id)) continue;
+    let id = typeof o["id"] === "string" ? o["id"].trim() : "";
+    if (!allowed.has(id) || seen.has(id)) {
+      const expected = targets[index];
+      if (!positional || !expected || seen.has(expected) || allowed.has(id)) continue;
+      id = expected;
+    }
     const doing = String(o["doing"] ?? o["activity"] ?? "")
       .replace(/\r?\n/g, " ")
       .replace(/^["'\u201C\u201D ]+|["'\u201C\u201D ]+$/g, "")
@@ -168,8 +179,9 @@ function buildSystem(world: WorldRow, t: number): string {
     "Write where each person is and what they are doing at this minute.",
     "Be specific and physical: a room, a street, a task, a small interruption. Use 4 to 14 words for doing.",
     "Not everyone is doing something interesting. People wait, commute, work, eat, queue, and fall asleep on the sofa.",
+    "Keep it physically plausible. No impossible tasks, broken objects, or accidents played for drama.",
     "Keep each person in or near their own city. Do not invent drama, weather events, or meetings with other people unless their recent post implies it.",
-    "Never mention the app, posting, phones, the internet, or being watched.",
+    "Never mention the app or the content they make. Do not use the words post, posting, story, feed, app, online, phone, or being watched. Describe their life, not their timeline.",
     "Do not use the person's name in doing.",
     `place must be exactly one of: ${PLACES.join(", ")}.`,
     "Return a JSON array only, with one object for every person listed, no prose and no code fences:",
@@ -238,8 +250,7 @@ async function generate(
   const user = await buildUser(env, world, targets, cached, t);
   const raw = await writeRaw(env, world, system, [{ role: "user", content: user }], 1000, null, false);
   if (!raw) return { entries: [], raw: null };
-  const allowed = new Set(targets.map((p) => p.id));
-  return { entries: parsePresence(raw, allowed), raw };
+  return { entries: parsePresence(raw, targets.map((p) => p.id)), raw };
 }
 
 async function readCache(env: Env, worldId: string): Promise<Map<string, Cached>> {
