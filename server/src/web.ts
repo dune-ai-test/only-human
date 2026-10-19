@@ -1207,9 +1207,11 @@ const WINDOW_JS = `
     }
     if (kind === 'ask') {
       var aw = persona(d.personaId);
-      if (d.state === 'pending') return { who: d.personaId, name: aw.name, rest: ' asked to comment on your post', at: d.at || at, key: 'ask:' + d.id + ':pending' };
-      if (d.state === 'approved') return { who: 'you', name: 'You', rest: ' approved ' + aw.name + '\\u2019s comment', at: d.at || at, key: 'ask:' + d.id + ':approved' };
-      if (d.state === 'skipped') return { who: 'you', name: 'You', rest: ' skipped ' + aw.name + '\\u2019s comment', at: d.at || at, key: 'ask:' + d.id + ':skipped' };
+      // Use the outbox item's own time: an approval/skip is stamped with the
+      // ask's original time in the payload, but the log wants when it happened.
+      if (d.state === 'pending') return { who: d.personaId, name: aw.name, rest: ' asked to comment on your post', at: at, key: 'ask:' + d.id + ':pending' };
+      if (d.state === 'approved') return { who: 'you', name: 'You', rest: ' approved ' + aw.name + '\\u2019s comment', at: at, key: 'ask:' + d.id + ':approved' };
+      if (d.state === 'skipped') return { who: 'you', name: 'You', rest: ' skipped ' + aw.name + '\\u2019s comment', at: at, key: 'ask:' + d.id + ':skipped' };
       return null; // posted — the reply itself is the line
     }
     if (kind === 'signal') {
