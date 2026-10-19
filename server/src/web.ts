@@ -1656,7 +1656,7 @@ const WINDOW_JS = `
       var m = state.gmsgs[id];
       var c = gby[m.groupId];
       if (!c) { c = { groupId: m.groupId, last: m }; gby[m.groupId] = c; }
-      else if ((m.at || 0) > (c.last.at || 0)) c.last = m;
+      else if (!c.last || (m.at || 0) > (c.last.at || 0)) c.last = m;
     });
     state.outbox.forEach(function (e) {
       if (e.kind !== 'group_send') return;
