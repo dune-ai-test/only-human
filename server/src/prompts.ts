@@ -11,9 +11,12 @@ export function personaPrompt(
   relations: RelationRow[],
   nameOf: (id: string) => string,
 ): string {
-  const ties = relations
-    .filter((r) => r.a === persona.id || r.b === persona.id)
-    .map((r) => `- ${nameOf(r.a === persona.id ? r.b : r.a)}: ${r.label}`)
+  const mine = relations.filter((r) => r.a === persona.id || r.b === persona.id);
+  const other = (r: RelationRow) => (r.a === persona.id ? r.b : r.a);
+  const bond = mine.find((r) => other(r) === "you");
+  const ties = mine
+    .filter((r) => other(r) !== "you")
+    .map((r) => `- ${nameOf(other(r))}: ${r.label}`)
     .join("\n");
 
   let out = "";
@@ -25,7 +28,13 @@ export function personaPrompt(
     out += ` — it colors what you notice and what you post about.\n`;
   }
   out += `Your writing style — this defines you: ${persona.voice}.\n`;
-  out += `The person you're writing to is ${world.me_name}, @${world.me_handle} — the only human on the app, and your new neighbor. Everyone else here is part of your small circle of friends.\n`;
+  out += `The person you're writing to is ${world.me_name}, @${world.me_handle} — the only human on the app.\n`;
+  if (bond) {
+    out += `They describe you as: "${bond.label}". You are not a stranger to them — you share a daily life, and that closeness shows in what you notice, ask and send.\n`;
+  } else {
+    out += `They are your new neighbor.\n`;
+  }
+  out += `Everyone else here is part of your small circle of friends.\n`;
   if (ties) out += `People you know:\n${ties}\n`;
   out += `Rules, always: write like a real person — never mention AI, models, assistants or prompts; no hashtags; lowercase is natural; no emoji unless your style calls for it; one or two short sentences; never echo the message back; never explain the joke.`;
   return out;
@@ -148,10 +157,13 @@ export function draftPersonAsk(world: WorldRow, description: string, handles: st
       `The only human there is ${world.me_name}, @${world.me_handle}. ` +
       "From the description, invent one specific, believable person — never a real famous person. " +
       "Return ONLY a JSON object, no markdown and no commentary, with exactly these keys: " +
-      '{"name":"...","handle":"...","occupation":"...","city":"...","bio":"...","voice":"..."}\n' +
+      '{"name":"...","handle":"...","occupation":"...","city":"...","bio":"...","voice":"...","relation":"..."}\n' +
       "Rules: name is a full human name; handle is lowercase letters, digits and underscores only, no @, 2–24 characters, easy to type; " +
       "occupation is one concrete job or role; city is one real city; bio is one sentence about them, specific and human; " +
       "voice is one sentence describing how they write — rhythm, what they notice, what they avoid. " +
+      `relation: if the description says who this person is to ${world.me_name} ("my wife", "my brother", "my boss"), repeat it there in the human's own words; ` +
+      "if the description states no relationship, use an empty string. When a relationship is given, the bio must make it unmistakable — " +
+      `use ${world.me_name}'s name and write a person who truly shares their daily life, not a stranger who just moved in. ` +
       "No hashtags, no emoji, no mention of AI, models, assistants or prompts. " +
       taken,
     user: description,

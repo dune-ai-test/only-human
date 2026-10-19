@@ -63,6 +63,7 @@ interface ParsedPersona {
   joinedYear: string;
   followerBoost: number;
   custom: number;
+  relation: string;
 }
 
 function parsePersona(raw: Record<string, unknown>, fallbackId: string, custom = false): ParsedPersona | null {
@@ -85,7 +86,17 @@ function parsePersona(raw: Record<string, unknown>, fallbackId: string, custom =
     joinedYear: str(raw["joinedYear"]).trim(),
     followerBoost: Number.isFinite(boost) ? Math.round(boost) : 0,
     custom: custom ? 1 : 0,
+    relation: cleanRelation(raw["relation"]),
   };
+}
+
+/** "Who they are to you" — the human's own words ("my wife"), one line only. */
+function cleanRelation(value: unknown): string {
+  return str(value)
+    .replace(/[\r\n"]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60);
 }
 
 // ---- profiles written from a human description --------------------------
@@ -141,6 +152,7 @@ interface DraftPerson {
   city: string;
   bio: string;
   voice: string;
+  relation: string;
 }
 
 interface DraftOrg {
@@ -179,7 +191,8 @@ function parseDraft(raw: string, kind: "person" | "org"): Draft | null {
   if (kind === "person") {
     const occupation = str(obj["occupation"]).replace(/\s+/g, " ").trim().slice(0, 80);
     const voice = str(obj["voice"]).replace(/\s+/g, " ").trim().slice(0, 160);
-    return { name, handle, occupation, city, bio, voice };
+    const relation = cleanRelation(obj["relation"]);
+    return { name, handle, occupation, city, bio, voice, relation };
   }
 
   const monogram =
@@ -706,9 +719,23 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
         )
         .run();
       if ((ins.meta.changes ?? 0) === 0) return json({ ok: true, id: persona.id, duplicate: true });
+      // "Who they are to you" lives in relations against the human ("you"), so
+      // every prompt knows this is not a stranger — the wife stays the wife.
+      if (persona.relation) {
+        await env.DB.prepare("INSERT INTO relations (world_id, a, b, label) VALUES (?, ?, 'you', ?)")
+          .bind(world.id, persona.id, persona.relation)
+          .run();
+      }
       // The app's own semantics: a fresh persona follows you, not the reverse.
       await setFollow(env, world, persona.id, { following: 0, followed_by: 1 });
-      await pushActivity(env, world.id, persona.id, persona.name, " just moved in and followed you", "Follow");
+      await pushActivity(
+        env,
+        world.id,
+        persona.id,
+        persona.name,
+        persona.relation ? " joined the world and followed you" : " just moved in and followed you",
+        "Follow",
+      );
       await push(env, world.id, "persona", {
         id: persona.id,
         name: persona.name,
@@ -720,6 +747,7 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
         gradient: JSON.parse(persona.gradient),
         joinedYear: persona.joinedYear,
         followerBoost: persona.followerBoost,
+        relation: persona.relation,
       });
       await schedule(env, world.id, t + randInt(30_000, 120_000), "write_post", { personaId: persona.id });
       return json({ ok: true, id: persona.id });

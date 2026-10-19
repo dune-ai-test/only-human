@@ -1875,7 +1875,7 @@ const WINDOW_JS = `
     av.textContent = '';
     av.appendChild(avatarEl(who, 'lg'));
     $('sheet-name').textContent = who.name;
-    $('sheet-handle').textContent = '@' + who.handle;
+    $('sheet-handle').textContent = '@' + who.handle + (raw.relation ? ' \u00b7 ' + raw.relation : '');
     var bits = [];
     if (raw.occupation) bits.push(raw.occupation);
     if (raw.location) bits.push(raw.location);
@@ -2188,6 +2188,7 @@ const WINDOW_JS = `
     if (state.growBusy) return;
     var name = fields.name.value.trim();
     var handle = fields.handle.value.replace(/^@+/, '').replace(/\\s+/g, '').trim();
+    var relation = fields.relation ? fields.relation.value.trim() : '';
     var bio = fields.bio.value.trim();
     var occupation = fields.occupation.value.trim();
     var location = fields.city.value.trim();
@@ -2204,7 +2205,7 @@ const WINDOW_JS = `
     var gradient = paletteFor(name + handle);
     var joinedYear = String(new Date().getUTCFullYear());
     var payload = {
-      name: name, handle: handle, bio: bio, occupation: occupation,
+      name: name, handle: handle, relation: relation, bio: bio, occupation: occupation,
       location: location, voice: voice, gradient: gradient,
       joinedYear: joinedYear, followerBoost: 0
     };
@@ -2214,7 +2215,7 @@ const WINDOW_JS = `
         var id = r.data && r.data.id;
         if (id) {
           state.personas[id] = {
-            id: id, name: name, handle: handle, bio: bio, occupation: occupation,
+            id: id, name: name, handle: handle, relation: relation, bio: bio, occupation: occupation,
             location: location, voice: voice, gradient: gradient,
             joinedYear: joinedYear, followerBoost: 0, kind: 'person'
           };
@@ -2296,7 +2297,7 @@ const WINDOW_JS = `
       }
       var p = r.data.profile;
       Object.keys(fields).forEach(function (key) {
-        if (typeof p[key] === 'string' && p[key]) fields[key].value = p[key];
+        if (typeof p[key] === 'string' && (p[key] || key === 'relation')) fields[key].value = p[key];
       });
       if (onStyle) onStyle(p);
       note.hidden = false;
@@ -2472,6 +2473,7 @@ const WINDOW_JS = `
 
     addField(form, 'name', 'Name', 'Rosa', 60, false);
     addField(form, 'handle', 'Handle', 'rosa', 30, false);
+    addField(form, 'relation', 'Who they are to you (optional)', 'my wife, my brother, my boss…', 60, false);
     addField(form, 'occupation', 'Occupation', 'sound engineer', 80, false);
     addField(form, 'city', 'City', 'Lisbon', 60, false);
     var bio = addField(form, 'bio', 'A line about them', 'What they are like, in a sentence.', 200, true);

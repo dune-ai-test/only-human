@@ -139,9 +139,13 @@ Rules decide when and what kind; the model only writes the words.
   dm, follow, like, approve, skip, set_model, budget, note, note_remove,
   create_persona, draft_profile, create_org. Idempotent by commandId.
   `draft_profile` (`{kind: "person" | "org", description}`) returns a
-  model-written profile for the add form; `create_org` accepts a known
-  `preset` or a custom `{name, handle, city, bio, feedUrl}` whose feed is
-  fetched before it is saved.
+  model-written profile for the add form — for a person it includes the
+  relationship the human stated (`relation`, e.g. `"my wife"`).
+  `create_persona` accepts that `relation` and stores it against the human
+  (`relations` with `b = "you"`), so the persona's prompts know who they are
+  to you; `create_org` accepts a known `preset` or a custom
+  `{name, handle, city, bio, feedUrl}` whose feed is fetched before it is
+  saved.
 - `POST /v1/notes` — the active world notes, newest first.
 - `POST /v1/export` — full JSON dump of a world.
 - `POST /v1/delete` `{…, confirm:"delete"}` — hard delete.
@@ -213,9 +217,12 @@ email.
   A custom feed is fetched and parsed before the org is saved.
 - **Describe-to-fill — implemented.** Both Add sheets take a free-form
   description. `draft_profile` writes the visible profile fields only — name,
-  handle, occupation, city, bio, voice for a person; name, handle, city, bio,
-  monogram for a newsroom. The human reviews and edits before saving. A failed
-  draft writes nothing; a model failure is never filled with template text.
+  handle, occupation, city, bio, voice (and the relationship: "my wife") for a
+  person; name, handle, city, bio, monogram for a newsroom. The relationship
+  is stored against the human (`relations` with `b = "you"`) so every later
+  prompt knows who they are to you — a wife never writes like a neighbor. The
+  human reviews and edits before saving. A failed draft writes nothing; a
+  model failure is never filled with template text.
 - A cron pulling weather for the world's cities → `context` rows is still
   later; the store and prompt path are ready for it.
 
