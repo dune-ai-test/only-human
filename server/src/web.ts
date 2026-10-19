@@ -470,7 +470,7 @@ body.plain .bar { background: var(--bar-plain); }
   position: relative; width: 100%; max-width: 560px; max-height: 88vh; overflow: auto;
   background: var(--bg); color: var(--label);
   border-radius: 20px 20px 0 0;
-  padding: 8px 20px 22px;
+  padding: 8px 20px calc(22px + env(safe-area-inset-bottom));
   box-shadow: 0 -12px 40px rgba(0, 0, 0, .18);
   animation: sheetup .28s cubic-bezier(.2, .7, .2, 1);
   -webkit-overflow-scrolling: touch;
@@ -479,7 +479,7 @@ body.plain .bar { background: var(--bar-plain); }
 @media (prefers-reduced-motion: reduce) { .sheet-card { animation: none; } }
 @media (min-width: 620px) {
   .sheet { align-items: center; padding: 24px; }
-  .sheet-card { border-radius: 20px; max-height: 82vh; padding: 18px 24px 24px; }
+  .sheet-card { border-radius: 20px; max-height: 82vh; padding: 18px 24px calc(24px + env(safe-area-inset-bottom)); }
 }
 .sheet-grab { width: 36px; height: 5px; border-radius: 3px; background: var(--sep); margin: 0 auto 10px; }
 @media (min-width: 620px) { .sheet-grab { display: none; } }
