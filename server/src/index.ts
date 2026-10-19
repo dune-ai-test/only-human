@@ -18,15 +18,20 @@ export default {
 
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (req.method === "GET" && url.pathname === "/v1/health") {
-      // Also proves the D1 binding is in place: the dashboard setup check.
+      // Also proves the D1 binding + schema are in place: the setup check.
       let db = false;
+      let tables: string[] = [];
       try {
         await env.DB.prepare("SELECT 1").first();
         db = true;
+        const rows = await env.DB.prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+        ).all<{ name: string }>();
+        tables = (rows.results ?? []).map((r) => r.name);
       } catch {
         db = false;
       }
-      return json({ ok: true, db, t: Date.now() });
+      return json({ ok: true, db, tables, t: Date.now() });
     }
     // The site: a quiet landing page, and the console window into a world.
     if (req.method === "GET" || req.method === "HEAD") {

@@ -64,6 +64,10 @@ if (!health.ok || !health.db) {
   console.error("health check failed - is the D1 binding in place?");
   process.exit(1);
 }
+if (!Array.isArray(health.tables) || !health.tables.includes("worlds")) {
+  console.error("schema check failed - run schema.sql against this database");
+  process.exit(1);
+}
 
 // The site: the landing answers, and the console window is there to open.
 const home = await fetch(`${base}/`);
