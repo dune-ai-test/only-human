@@ -42,11 +42,13 @@ the app, no assets, no build step:
 - `GET /` — the landing: what this server is, in as few words as possible.
 - `GET /w` — the window: paste a world id + recovery key and you're looking
   at the world itself — the world clock, a timeline of everything that
-  happens, a composer, the ask queue, messages, and the people. Reads *and*
+  happens, a composer, the ask queue, messages, the people, and a **log**:
+  one line per thing anyone did, in order (posts, stories, messages,
+  comments, likes, follows, asks), with world-local times. Reads *and*
   writes through the same authenticated API the app uses. Credentials stay
   in that browser only; auto-refreshes every 40 s; writes are queued locally
   and retried until they land.
-- Deep link: `GET /w#world=<id>&key=<key>&tab=<feed|dms|people>&persona=<id>`
+- Deep link: `GET /w#world=<id>&key=<key>&tab=<feed|log|dms|people>&persona=<id>`
   — the fragment never leaves the browser and is scrubbed from the address
   bar on load.
 

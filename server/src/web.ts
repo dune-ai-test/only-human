@@ -216,6 +216,7 @@ body.plain .bar { background: var(--bar-plain); }
   background: transparent; color: var(--label);
   font-size: 13px; font-weight: 600; letter-spacing: -.08px;
   cursor: pointer;
+  white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
 }
 .seg-btn.on { background: var(--seg-on); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
@@ -278,6 +279,31 @@ body.plain .bar { background: var(--bar-plain); }
 .event-text { flex: 1; min-width: 0; }
 .event-time { flex: none; }
 .event .story-line { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* console: the log — one line per thing that happened */
+.logcard { padding: 0; }
+.log-day {
+  padding: 13px 16px 5px;
+  font-size: 12px; line-height: 16px; font-weight: 600;
+  letter-spacing: .02em; text-transform: uppercase;
+  color: var(--label3);
+}
+.logrow { display: flex; gap: 10px; padding: 7px 16px; align-items: flex-start; }
+.logrow + .logrow { border-top: .5px solid var(--sep); }
+.log-day + .logrow { border-top: 0; }
+.log-t {
+  flex: none; width: 40px; padding-top: 1px;
+  font-size: 12px; line-height: 17px; color: var(--label3);
+  font-variant-numeric: tabular-nums;
+}
+.log-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; }
+.log-x { flex: 1; min-width: 0; font-size: 14px; line-height: 19px; letter-spacing: -.15px; }
+.log-x b { font-weight: 600; }
+.log-x .rest { color: var(--label2); }
+.log-x .quote {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  margin-top: 1px; color: var(--label2);
+}
 
 .post { position: relative; display: flex; gap: 12px; padding: 14px 0; }
 .post + .post::before,
@@ -518,6 +544,7 @@ const WINDOW_JS = `
     me: null, worldInfo: null, budget: null,
     personas: {}, follows: {}, posts: {}, replies: {}, stories: {},
     signals: {}, dms: {}, asks: {},
+    log: [],
     outbox: [],
     drafts: {},
     times: [],
@@ -707,6 +734,7 @@ const WINDOW_JS = `
     if (replace) {
       state.personas = {}; state.follows = {}; state.posts = {}; state.replies = {};
       state.stories = {}; state.signals = {}; state.dms = {}; state.asks = {};
+      state.log = [];
     }
     (items || []).forEach(function (item) {
       var d = item && item.data;
@@ -719,6 +747,17 @@ const WINDOW_JS = `
       else if (item.kind === 'signal') state.signals[d.id] = d;
       else if (item.kind === 'dm') state.dms[d.id] = d;
       else if (item.kind === 'ask') state.asks[d.id] = d;
+      // The log keeps every outbox item in order — even the updates that the
+      // state maps collapse (an ask moving pending → approved, a post's
+      // counters moving). It is the world's own record of what happened.
+      if (typeof item.seq === 'number') {
+        state.log.push({
+          seq: item.seq,
+          kind: item.kind,
+          at: item.at || d.createdAt || d.at || 0,
+          data: d
+        });
+      }
     });
   }
 
@@ -1093,6 +1132,144 @@ const WINDOW_JS = `
     return wrap;
   }
 
+  // ---- render: the log ----------------------------------------------------
+  // Everything the world did, in order. Derived from the outbox stream the
+  // app already receives — no extra endpoint, no extra table.
+  function snippet(text, n) {
+    var t = String(text || '').replace(/\\s+/g, ' ').trim();
+    if (t.length <= n) return t;
+    t = t.slice(0, n - 1);
+    var cut = t.lastIndexOf(' ');
+    if (cut > n * 0.55) t = t.slice(0, cut);
+    return t + '\\u2026';
+  }
+  function logDayKey(t) {
+    var w = state.worldInfo || { utcOffsetMinutes: 0 };
+    var d = new Date(t + w.utcOffsetMinutes * 60000);
+    return d.getUTCFullYear() + '-' + d.getUTCMonth() + '-' + d.getUTCDate();
+  }
+  function logDayLabel(t) {
+    var w = state.worldInfo || { utcOffsetMinutes: 0 };
+    var d = new Date(t + w.utcOffsetMinutes * 60000);
+    var n = new Date(worldNow());
+    if (d.getUTCFullYear() === n.getUTCFullYear() && d.getUTCMonth() === n.getUTCMonth() && d.getUTCDate() === n.getUTCDate()) return 'Today';
+    var y = new Date(n.getTime() - 86400000);
+    if (d.getUTCFullYear() === y.getUTCFullYear() && d.getUTCMonth() === y.getUTCMonth() && d.getUTCDate() === y.getUTCDate()) return 'Yesterday';
+    return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()];
+  }
+  function logTime(t) {
+    var w = state.worldInfo || { utcOffsetMinutes: 0 };
+    var d = new Date(t + w.utcOffsetMinutes * 60000);
+    return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+  }
+  function logLine(e) {
+    var d = e.data || {};
+    var kind = e.kind;
+    var at = e.at || d.createdAt || d.at || 0;
+    // Follow snapshots are setup/noise; a persona's later follow already
+    // arrives as a signal ("started following you").
+    if (kind === 'follow') return null;
+    if (kind === 'persona') {
+      return { who: d.id, name: d.name || d.handle || d.id, rest: ' joined the world', at: at };
+    }
+    if (kind === 'post') {
+      var pw = persona(d.authorId);
+      return {
+        who: d.authorId,
+        name: d.authorId === 'you' ? 'You' : pw.name,
+        rest: ' posted',
+        quote: d.text,
+        at: d.createdAt || at,
+        key: 'post:' + d.id
+      };
+    }
+    if (kind === 'story') {
+      var sw = persona(d.personaId);
+      return { who: d.personaId, name: sw.name, rest: ' shared a story', quote: d.text, at: d.createdAt || at, key: 'story:' + d.id };
+    }
+    if (kind === 'dm') {
+      var dw = persona(d.personaId);
+      if (d.fromMe) return { who: 'you', name: 'You', rest: ' messaged ' + dw.name, quote: d.text, at: d.at || at, key: 'dm:' + d.id };
+      return { who: d.personaId, name: dw.name, rest: ' messaged you', quote: d.text, at: d.at || at, key: 'dm:' + d.id };
+    }
+    if (kind === 'reply') {
+      if (d.authorId === 'you') return { who: 'you', name: 'You', rest: ' replied', quote: d.text, at: d.createdAt || at, key: 'reply:' + d.id };
+      var post = state.posts[d.postId];
+      var rw = persona(d.authorId);
+      return {
+        who: d.authorId,
+        name: rw.name,
+        rest: post && post.authorId === 'you' ? ' commented on your post' : ' replied',
+        quote: d.text,
+        at: d.createdAt || at,
+        key: 'reply:' + d.id
+      };
+    }
+    if (kind === 'ask') {
+      var aw = persona(d.personaId);
+      if (d.state === 'pending') return { who: d.personaId, name: aw.name, rest: ' asked to comment on your post', at: d.at || at, key: 'ask:' + d.id + ':pending' };
+      if (d.state === 'approved') return { who: 'you', name: 'You', rest: ' approved ' + aw.name + '\\u2019s comment', at: d.at || at, key: 'ask:' + d.id + ':approved' };
+      if (d.state === 'skipped') return { who: 'you', name: 'You', rest: ' skipped ' + aw.name + '\\u2019s comment', at: d.at || at, key: 'ask:' + d.id + ':skipped' };
+      return null; // posted — the reply itself is the line
+    }
+    if (kind === 'signal') {
+      // Reply/Message signals mirror the reply/dm items; don't say it twice.
+      if (d.kind === 'Reply' || d.kind === 'Message') return null;
+      return {
+        who: d.personaId,
+        name: d.boldPart || persona(d.personaId).name,
+        rest: d.rest || '',
+        at: d.createdAt || at,
+        key: 'signal:' + d.id
+      };
+    }
+    return null;
+  }
+  function renderLog() {
+    var host = $('log');
+    host.textContent = '';
+    var lines = [];
+    var seen = {};
+    state.log.forEach(function (e) {
+      var line = logLine(e);
+      if (!line) return;
+      if (line.key) {
+        if (seen[line.key]) return;
+        seen[line.key] = true;
+      }
+      lines.push(line);
+    });
+    lines.reverse(); // newest first, like everything else here
+    var shown = lines.slice(0, 400);
+    if (shown.length) {
+      var card = el('div', 'card logcard');
+      var day = '';
+      shown.forEach(function (line) {
+        var key = logDayKey(line.at);
+        if (key !== day) {
+          day = key;
+          card.appendChild(el('div', 'log-day', logDayLabel(line.at)));
+        }
+        var row = el('div', 'logrow');
+        row.appendChild(el('span', 'log-t num', logTime(line.at)));
+        var dot = el('span', 'log-dot');
+        var who = persona(line.who);
+        var g = (who.gradient && who.gradient.length >= 2) ? who.gradient : GRAY;
+        dot.style.background = g[1];
+        row.appendChild(dot);
+        var x = el('div', 'log-x');
+        x.appendChild(el('b', null, line.name));
+        if (line.rest) x.appendChild(el('span', 'rest', line.rest));
+        if (line.quote) x.appendChild(el('div', 'quote', '\\u201C' + snippet(line.quote, 140) + '\\u201D'));
+        row.appendChild(x);
+        card.appendChild(row);
+      });
+      host.appendChild(card);
+    }
+    $('log-empty').hidden = shown.length > 0;
+    $('log-more').textContent = lines.length > shown.length ? '\\u2026and ' + (lines.length - shown.length) + ' earlier events' : '';
+  }
+
   // ---- render: messages ---------------------------------------------------
   function conversations() {
     var by = {};
@@ -1276,6 +1453,7 @@ const WINDOW_JS = `
     renderClock();
     renderWaiting();
     renderFeed();
+    renderLog();
     renderDms();
     renderPeople();
     renderStatus();
@@ -1341,7 +1519,7 @@ const WINDOW_JS = `
   }
   function switchTab(name) {
     state.tab = name;
-    ['feed', 'dms', 'people'].forEach(function (t) {
+    ['feed', 'log', 'dms', 'people'].forEach(function (t) {
       $('tab-' + t).className = 'seg-btn' + (t === name ? ' on' : '');
       $('pane-' + t).hidden = t !== name;
     });
@@ -1357,6 +1535,7 @@ const WINDOW_JS = `
     state.cursor = 0;
     state.posts = {}; state.replies = {}; state.personas = {}; state.follows = {};
     state.stories = {}; state.signals = {}; state.dms = {}; state.asks = {};
+    state.log = [];
     state.me = null; state.worldInfo = null; state.thread = null;
     state.everSynced = false; state.lastSync = 0;
     loadOutbox();
@@ -1384,6 +1563,7 @@ const WINDOW_JS = `
     state.world = ''; state.key = ''; state.cursor = 0;
     state.posts = {}; state.replies = {}; state.personas = {}; state.follows = {};
     state.stories = {}; state.signals = {}; state.dms = {}; state.asks = {};
+    state.log = [];
     state.me = null; state.worldInfo = null; state.outbox = [];
     state.thread = null; state.everSynced = false; state.lastSync = 0;
     state.drafts = {}; state.times = [];
@@ -1392,7 +1572,7 @@ const WINDOW_JS = `
     $('post-btn').disabled = true; $('post-count').textContent = '';
     showForm('');
   });
-  ['feed', 'dms', 'people'].forEach(function (t) {
+  ['feed', 'log', 'dms', 'people'].forEach(function (t) {
     $('tab-' + t).addEventListener('click', function () {
       switchTab(t);
       render();
@@ -1429,6 +1609,7 @@ const WINDOW_JS = `
       var ftab = frag.get('tab');
       if (ftab === 'dms' || ftab === 'messages') state.tab = 'dms';
       else if (ftab === 'people') state.tab = 'people';
+      else if (ftab === 'log') state.tab = 'log';
       var fpersona = frag.get('persona');
       if (fpersona) { state.wantPersona = fpersona; state.tab = 'dms'; }
       history.replaceState(null, '', location.pathname);
@@ -1516,6 +1697,7 @@ export function windowPage(): string {
 
     <div class="seg" role="tablist">
       <button id="tab-feed" class="seg-btn on" role="tab">Feed</button>
+      <button id="tab-log" class="seg-btn" role="tab">Log</button>
       <button id="tab-dms" class="seg-btn" role="tab">Messages</button>
       <button id="tab-people" class="seg-btn" role="tab">People</button>
     </div>
@@ -1532,6 +1714,12 @@ export function windowPage(): string {
       <div id="feed"></div>
       <p id="feed-empty" class="t-sub quiet" hidden>Quiet right now.<br><span class="t-foot sec sub" style="display:inline-block">The world speaks when it has something to say.</span></p>
       <p id="older" class="t-foot sec older"></p>
+    </section>
+
+    <section id="pane-log" hidden>
+      <div id="log"></div>
+      <p id="log-empty" class="t-sub quiet" hidden>Nothing has happened yet.</p>
+      <p id="log-more" class="t-foot sec older"></p>
     </section>
 
     <section id="pane-dms" hidden>
