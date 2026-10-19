@@ -1,0 +1,23 @@
+# Only Human — the deployed world server.
+#
+# The D1 binding and the every-minute heartbeat live here, not only in the
+# dashboard: every `wrangler deploy` replaces the Worker's bindings with the
+# deploy config (there is no --keep-bindings flag), so a dashboard-only
+# binding is erased by the next build. Keeping them in the repo makes every
+# deploy self-contained.
+#
+# Runtime variables (DEFAULT_ENDPOINT, DEFAULT_MODEL) stay in the dashboard:
+# `keep_vars` stops deploys from clearing them.
+
+name = "only-human-worlds"
+main = "src/index.ts"
+compatibility_date = "2026-10-18"
+keep_vars = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "only-human-worlds"
+database_id = "b1f2dcfd-b432-4337-a1e3-59ea6a04ca2f"

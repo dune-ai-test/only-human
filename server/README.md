@@ -25,10 +25,14 @@ server/
   scripts/smoke.mjs    end-to-end smoke test against a running worker
 ```
 
-No Wrangler config ships in the repo: the deployed Worker is configured
-in the Cloudflare **dashboard** (D1 binding, variables, the cron) and
-deploys ship only code. Local dev uses an untracked `wrangler.local.toml`
-— see [Local dev](#local-dev).
+`wrangler.toml` carries the deployed Worker's shape — the D1 binding and
+the every-minute cron. It has to live in the repo: `wrangler deploy`
+replaces the Worker's bindings with whatever the deploy config says
+(there is no `--keep-bindings` flag), so a binding added only in the
+dashboard is erased by the next build. The model variables stay in the
+dashboard; `keep_vars` keeps deploys from touching them. Local dev uses
+an untracked `wrangler.local.toml` with a dummy database id — see
+[Local dev](#local-dev).
 
 ## The site
 
@@ -54,10 +58,9 @@ World data is only ever moved through the authenticated `POST /v1/sync` and
 Everything happens on dash.cloudflare.com and github.com; the same account
 owns the database and the Worker. Free plan is fine.
 
-There is deliberately no `wrangler.toml` in this repo. A config-less
-`wrangler deploy` ships **code only**: the D1 binding, the model defaults
-and the cron heartbeat live in the Worker's dashboard **Settings** and are
-never overwritten by deploys.
+`wrangler.toml` in this folder declares the Worker name, the D1 binding
+`DB` and the cron heartbeat, so each deploy restores them. The two model
+defaults are **dashboard** variables (`keep_vars` protects them).
 
 1. **Create the database.** *Storage & Databases → D1 SQL database → Create
    database* → name it `only-human-worlds` (no ID to copy — the binding in
@@ -85,19 +88,23 @@ never overwritten by deploys.
    to `world-server` rebuilds and redeploys automatically — docs-only edits
    included (pushes to `main` do not). Progress shows under the Worker's
    **Deployments** tab.
-4. **Bind the database.** Worker → **Settings → Bindings → Add binding →
-   D1 database**: variable name `DB`, database `only-human-worlds`. Save.
-   (If `db` stays `false` in step 7, run any deploy — *Deployments →
-   Retry latest* — and re-check.)
+4. **The database binding ships in `wrangler.toml`** (`DB` →
+   `only-human-worlds`, id `b1f2dcfd-…`). Do not add a second binding in
+   the dashboard: deploys replace dashboard bindings with the repo config.
+   If step 7 reports `db:false`, the database id in `wrangler.toml` is the
+   thing to check.
 5. **Model defaults.** **Settings → Variables and Secrets** — two *text*
    variables: `DEFAULT_ENDPOINT` = `https://api.kilo.ai/api/gateway` and
-   `DEFAULT_MODEL` = `poolside/laguna-s-2.1:free`. `--keep-vars` in the
-   deploy command means deploys never touch them.
-6. **Heartbeat.** **Settings → Triggers → Cron Triggers** → add
-   `* * * * *`.
+   `DEFAULT_MODEL` = `poolside/laguna-s-2.1:free`. `keep_vars` (and
+   `--keep-vars` in the deploy command) means deploys never touch them.
+6. **Heartbeat.** Also in `wrangler.toml`: `* * * * *`. Deploys attach it;
+   it should show under **Settings → Triggers → Cron Triggers** after the
+   first build.
 7. **Check it's alive.** Open the URL (the landing page shows), then
-   `/v1/health` — expect `"ok":true,"db":true`. The Worker's Logs show a
-   scheduled event every minute.
+   `/v1/health` — expect `"ok":true,"db":true` and
+   `"vars":{"endpoint":true,"model":true}`. The Worker's Logs show a
+   scheduled event every minute. After a new world is created, the first
+   warm-up posts appear within a minute.
 
 Then connect the app: Settings → World server → paste the URL → "Create the
 world". The landing page confirms the server is awake; `/w` opens the
@@ -106,8 +113,8 @@ console window.
 ### …or with wrangler (if you ever prefer the CLI)
 
 The database (steps 1–2) still comes from the dashboard. For the Worker
-itself you can skip the Git connection entirely — a config-less
-`wrangler deploy` creates and deploys it:
+itself you can skip the Git connection entirely — `wrangler.toml` supplies
+the binding and the cron, `npm run deploy` ships it:
 
 ```sh
 cd server
@@ -116,7 +123,7 @@ npx wrangler login
 npm run deploy
 ```
 
-Bindings, variables and the cron are added in the dashboard (steps 4–6).
+Only the two model variables are added in the dashboard (step 5).
 
 No secrets needed with the default keyless model
 (`poolside/laguna-s-2.1:free` on the Kilo gateway). A per-world custom
@@ -124,9 +131,10 @@ endpoint/model/key can be added to the `worlds` row later for BYO users.
 
 ## Local dev
 
-Local dev needs a Wrangler config, which the repo does not carry. Create
+Local dev uses its own config and a local database. Create
 `server/wrangler.local.toml` once (it is gitignored; the dummy
-`database_id` is fine against the local D1):
+`database_id` is fine against the local D1). `wrangler.toml` is the
+production config and is never used by the dev script:
 
 ```toml
 name = "only-human-worlds"

@@ -22,6 +22,6 @@ Thumbs.db
 # Toolchain (local portable JDK/Gradle)
 .tools/
 
-# Server: the deployed Worker is configured in the Cloudflare dashboard.
+# Server: the deployed Worker is shaped by server/wrangler.toml.
 # The local dev config (bindings/crons for `wrangler dev`) stays unstaged.
 server/wrangler.local.toml
