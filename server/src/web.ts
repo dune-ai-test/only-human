@@ -1799,7 +1799,6 @@ const WINDOW_JS = `
     var topicF = field(g.topic, 'Topic \u2014 what the room is about');
     var saveRow = el('div', 'gpanel-row');
     saveRow.appendChild(nameF.box);
-    saveRow.appendChild(topicF.box);
     var save = el('button', 'mini', 'Save');
     save.addEventListener('click', function () {
       var name = nameF.input.value.trim();
@@ -1811,7 +1810,10 @@ const WINDOW_JS = `
       render();
     });
     saveRow.appendChild(save);
+    var topicRow = el('div', 'gpanel-row');
+    topicRow.appendChild(topicF.box);
     card.appendChild(saveRow);
+    card.appendChild(topicRow);
 
     var kids = groupMemberIds(g);
     card.appendChild(el('h3', 'sheet-k', 'In the room'));
