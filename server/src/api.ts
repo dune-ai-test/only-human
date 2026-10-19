@@ -701,13 +701,15 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
       if (description.length > DRAFT_LIMIT) {
         return json({ error: `keep it under ${DRAFT_LIMIT} characters` }, 400);
       }
-      const handles = (await getPersonas(env, world.id)).map((x) => x.handle);
+      const people = await getPersonas(env, world.id);
+      const handles = people.map((x) => x.handle);
+      const names = people.map((x) => x.name);
       try {
         handles.push(...(await getOrgs(env, world.id)).map((x) => x.handle));
       } catch {
         // A missing news schema should not block a person draft.
       }
-      const ask = kind === "person" ? draftPersonAsk(world, description, handles) : draftOrgAsk(description, handles);
+      const ask = kind === "person" ? draftPersonAsk(world, description, handles, names) : draftOrgAsk(description, handles);
       const raw = await writeRaw(env, world, ask.system, [{ role: "user", content: ask.user }], 500, null, false, 0.55);
       if (!raw) return json({ error: "the world did not answer" }, 503);
       const draft = parseDraft(raw, kind, world.me_name);

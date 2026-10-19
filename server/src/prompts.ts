@@ -145,12 +145,25 @@ function handleList(handles: string[]): string {
   return clean.length ? `Already taken: ${clean.slice(0, 80).join(", ")}.` : "";
 }
 
+function nameList(names: string[]): string {
+  const clean = names.map((n) => n.replace(/\s+/g, " ").trim()).filter(Boolean);
+  return clean.length
+    ? `People already in the world — pick a different name, unless the description names this person: ${clean.slice(0, 80).join(", ")}.`
+    : "";
+}
+
 /**
  * The human describes someone in their own words, and the model casts the
  * person. It returns one JSON object; every visible field is model-written.
  */
-export function draftPersonAsk(world: WorldRow, description: string, handles: string[]): { system: string; user: string } {
+export function draftPersonAsk(
+  world: WorldRow,
+  description: string,
+  handles: string[],
+  names: string[] = [],
+): { system: string; user: string } {
   const taken = handleList(handles);
+  const existing = nameList(names);
   return {
     system:
       "You are casting a new neighbor for a tiny, quiet social app called Only Human. " +
@@ -166,6 +179,8 @@ export function draftPersonAsk(world: WorldRow, description: string, handles: st
       "if the description states no relationship, use an empty string. When a relationship is given, the bio must make it unmistakable — " +
       `mention ${world.me_name} by first name and write a person who truly shares their daily life, not a stranger who just moved in. ` +
       "No hashtags, no emoji, no mention of AI, models, assistants or prompts. " +
+      existing +
+      " " +
       taken,
     user: description,
   };
