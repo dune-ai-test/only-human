@@ -869,6 +869,7 @@ const WINDOW_JS = `
     pill.textContent = quiet ? 'asleep' : 'awake';
     pill.className = 'pill ' + (quiet ? 'asleep' : 'awake');
     $('wake').textContent = wakeText();
+    $('wake-k').textContent = quiet ? 'next wake' : 'next stir';
     var budget = state.budget;
     var calls = w ? w.callsToday : 0;
     if (budget == null) budget = w ? w.dailyBudget : null;
@@ -1690,7 +1691,7 @@ export function windowPage(): string {
         <span id="state-pill" class="pill">…</span>
       </div>
       <div class="stats">
-        <div class="stat"><div id="wake" class="stat-v">—</div><div class="stat-k t-foot sec">next wake</div></div>
+        <div class="stat"><div id="wake" class="stat-v">—</div><div id="wake-k" class="stat-k t-foot sec">next stir</div></div>
         <div class="stat"><div id="words" class="stat-v">—</div><div class="stat-k t-foot sec">their words today</div></div>
         <div class="stat"><div id="alive" class="stat-v">—</div><div class="stat-k t-foot sec">alive</div></div>
       </div>

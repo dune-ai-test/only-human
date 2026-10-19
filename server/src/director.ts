@@ -104,7 +104,17 @@ export async function runTick(env: Env, world: WorldRow): Promise<void> {
   if (personas.length) {
     const follows = await getFollows(env, world.id);
     const roll = Math.random();
-    const events = roll < 0.78 ? 0 : roll < 0.95 ? 1 : 2;
+    // Most beats are quiet, but the world must not disappear. If nothing
+    // visible has happened for a while, this beat is forced to act.
+    let events = roll < 0.55 ? 0 : roll < 0.9 ? 1 : 2;
+    const last = await env.DB.prepare(
+      "SELECT MAX(created_at) AS at FROM outbox WHERE world_id = ? AND kind IN ('post','story','dm','reply','signal')",
+    )
+      .bind(world.id)
+      .first<{ at: number | null }>();
+    const silentFor = t - (last?.at ?? 0);
+    if (silentFor > 30 * 60_000) events = Math.max(events, 2);
+    else if (silentFor > 15 * 60_000) events = Math.max(events, 1);
     const used = new Set<string>();
     for (let i = 0; i < events; i++) {
       const persona = pickPersona(personas, follows, used);
@@ -113,7 +123,7 @@ export async function runTick(env: Env, world: WorldRow): Promise<void> {
       await runEvent(env, world, persona, follows);
     }
   }
-  await scheduleNext(t + randInt(10, 40) * 60_000);
+  await scheduleNext(t + randInt(5, 14) * 60_000);
 }
 
 async function runEvent(

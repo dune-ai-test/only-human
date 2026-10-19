@@ -188,9 +188,10 @@ then `curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"`.
 ## How the world runs
 
 - **Heartbeat**: a cron trigger every minute runs due jobs: world ticks
-  (scheduled 10–40 min apart while awake), warm-up writes, DM replies,
-  comment asks and comment writes. Interactive things land roughly a
-  minute or two after you do them — slow enough to feel human.
+  (scheduled 5–14 min apart while awake; a long silence forces an event),
+  warm-up writes, DM replies, comment asks and comment writes. Interactive
+  things land roughly a minute or two after you do them — slow enough to
+  feel human.
 - **Quiet hours**: the world sleeps 01:00–06:30 *your local time* (the
   offset you shipped at creation), waking ~06:45.
 - **Budget**: `daily_budget` per world (default 200, adjustable 0–1000
