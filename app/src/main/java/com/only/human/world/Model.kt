@@ -124,6 +124,38 @@ data class DmThread(
     val unread: Int,
 )
 
+/** A group chat — a few people in one room. */
+data class Group(
+    val id: String,
+    val name: String,
+    val topic: String,
+    /** Member persona ids. */
+    val members: List<String>,
+    /** Epoch millis. */
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+/** One message in a group chat. */
+data class GroupMsg(
+    val id: String,
+    val groupId: String,
+    /** "you" or a persona id. */
+    val authorId: String,
+    val text: String,
+    /** Epoch millis. */
+    val at: Long,
+) {
+    val timeLabel: String get() = relativeTime(at)
+}
+
+/** A group shown in the Messages list. */
+data class GroupThread(
+    val group: Group,
+    val last: GroupMsg,
+    val unread: Int,
+)
+
 /** A story — a moment from right now, gone after a day. */
 data class Story(
     val id: String,

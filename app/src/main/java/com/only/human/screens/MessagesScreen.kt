@@ -67,17 +67,26 @@ import com.only.human.design.type
 import com.only.human.world.Cast
 import com.only.human.world.Dm
 import com.only.human.world.DmThread
+import com.only.human.world.GroupThread
 import com.only.human.world.Persona
 import com.only.human.world.World
 
-/** The Messages list — every private thread, newest first. */
+/** The Messages list — every private thread and group, newest first. */
 @Composable
-fun MessagesScreen(onBack: () -> Unit, onOpenDm: (String) -> Unit) {
+fun MessagesScreen(
+    onBack: () -> Unit,
+    onOpenDm: (String) -> Unit,
+    onOpenGroup: (String) -> Unit,
+    onNewGroup: () -> Unit,
+) {
     val c = colors
     val t = type
     val listState = rememberLazyListState()
     val offset = rememberCollapseOffset(listState)
-    val threads = World.dmThreads()
+    val entries = (
+        World.dmThreads().map { MessagesEntry.Dm(it) } +
+            World.groupThreads().map { MessagesEntry.Group(it) }
+        ).sortedByDescending { it.at }
 
     LargeTitleScaffold(
         title = "Messages",
@@ -93,7 +102,12 @@ fun MessagesScreen(onBack: () -> Unit, onOpenDm: (String) -> Unit) {
             ),
         ) {
             item(key = "title") { LargeTitleHeader("Messages") }
-            if (threads.isEmpty()) {
+            item(key = "newGroup") {
+                InsetGroup(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    NewGroupRow(onClick = onNewGroup)
+                }
+            }
+            if (entries.isEmpty()) {
                 item(key = "empty") {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 24.dp),
@@ -112,17 +126,73 @@ fun MessagesScreen(onBack: () -> Unit, onOpenDm: (String) -> Unit) {
             } else {
                 item(key = "threads") {
                     InsetGroup(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        threads.forEachIndexed { index, thread ->
-                            ThreadRow(
-                                thread = thread,
-                                showDivider = index != threads.lastIndex,
-                                onClick = { onOpenDm(thread.personaId) },
-                            )
+                        entries.forEachIndexed { index, entry ->
+                            when (entry) {
+                                is MessagesEntry.Dm -> ThreadRow(
+                                    thread = entry.thread,
+                                    showDivider = index != entries.lastIndex,
+                                    onClick = { onOpenDm(entry.thread.personaId) },
+                                )
+                                is MessagesEntry.Group -> GroupRow(
+                                    thread = entry.thread,
+                                    showDivider = index != entries.lastIndex,
+                                    onClick = { onOpenGroup(entry.thread.group.id) },
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** A row in the merged list — a DM thread or a group. */
+private sealed interface MessagesEntry {
+    val at: Long
+
+    data class Dm(val thread: DmThread) : MessagesEntry {
+        override val at: Long get() = thread.last.at
+    }
+
+    data class Group(val thread: GroupThread) : MessagesEntry {
+        override val at: Long get() = thread.last.at
+    }
+}
+
+@Composable
+private fun NewGroupRow(onClick: () -> Unit) {
+    val c = colors
+    val t = type
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .iosClickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(c.fill),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = OhIcons.Plus,
+                contentDescription = null,
+                tint = c.accent,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            "New Group",
+            style = t.body.copy(fontWeight = FontWeight.Medium),
+            color = c.label,
+            maxLines = 1,
+        )
     }
 }
 
@@ -152,6 +222,57 @@ private fun ThreadRow(thread: DmThread, showDivider: Boolean, onClick: () -> Uni
             )
             Text(
                 text = (if (last.fromMe) "You: " else "") + last.text.replace('\n', ' '),
+                style = t.subheadline,
+                color = c.labelSecondary,
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(last.timeLabel, style = t.footnote, color = c.labelSecondary)
+            if (unread) {
+                Spacer(Modifier.height(5.dp))
+                Box(Modifier.size(9.dp).clip(CircleShape).background(c.accent))
+            }
+        }
+    }
+    if (showDivider) Hairline(startInset = 74.dp)
+}
+
+@Composable
+private fun GroupRow(thread: GroupThread, showDivider: Boolean, onClick: () -> Unit) {
+    val c = colors
+    val t = type
+    val group = thread.group
+    val last = thread.last
+    val unread = thread.unread > 0
+    val lead = group.members.firstOrNull()?.let { Cast.byId(it) }
+    val parts = group.name.trim().split(" ").filter { it.isNotEmpty() }
+    val initials = when {
+        parts.isEmpty() -> "#"
+        parts.size == 1 -> parts[0].take(1).uppercase()
+        else -> (parts[0].take(1) + parts[1].take(1)).uppercase()
+    }
+    val sender = if (last.authorId == "you") "You" else Cast.byId(last.authorId).name.split(" ").first()
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .iosClickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MonogramAvatar(lead?.gradient ?: listOf(c.fillSecondary, c.fillSecondary), initials, 46.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                group.name,
+                style = t.body.copy(fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Medium),
+                color = c.label,
+                maxLines = 1,
+            )
+            Text(
+                text = "$sender: " + last.text.replace('\n', ' '),
                 style = t.subheadline,
                 color = c.labelSecondary,
                 maxLines = 1,

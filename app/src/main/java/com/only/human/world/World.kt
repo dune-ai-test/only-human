@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.toArgb
 import com.only.human.data.ActivityEntity
 import com.only.human.data.DmEntity
 import com.only.human.data.FollowEntity
+import com.only.human.data.GroupEntity
+import com.only.human.data.GroupMsgEntity
 import com.only.human.data.OhDao
 import com.only.human.data.OhDatabase
 import com.only.human.data.PersonaEntity
@@ -44,6 +46,8 @@ object World {
     val activities = mutableStateListOf<ActivityItem>()
     val replies = mutableStateListOf<Reply>()
     val dms = mutableStateListOf<Dm>()
+    val groups = mutableStateListOf<Group>()
+    val groupMsgs = mutableStateListOf<GroupMsg>()
 
     /** People waiting under your posts for a yes — nothing written yet. */
     val commentIntents = mutableStateListOf<CommentIntent>()
@@ -98,11 +102,20 @@ object World {
     /** personaId -> they're typing a DM right now. */
     val typing = mutableStateMapOf<String, Boolean>()
 
+    /** groupId -> someone's typing in the group right now. */
+    val groupTyping = mutableStateMapOf<String, Boolean>()
+
     /** personaId -> the last time you opened their thread. */
     val dmSeen = mutableStateMapOf<String, Long>()
 
+    /** groupId -> the last time you opened the room. */
+    val groupSeen = mutableStateMapOf<String, Long>()
+
     /** The DM thread on screen right now, if any — arrivals there read on the spot. */
     var openDm by mutableStateOf<String?>(null)
+
+    /** The group chat on screen right now, if any — arrivals there read on the spot. */
+    var openGroup by mutableStateOf<String?>(null)
 
     /** The post page on screen right now, if any — replies there skip the Activity row. */
     var openPost by mutableStateOf<String?>(null)
@@ -248,6 +261,8 @@ object World {
             val storedActivities = dao.activities().map { it.toModel() }
             val storedReplies = dao.replies().map { it.toModel() }
             val storedDms = dao.dms().map { it.toModel() }
+            val storedGroups = dao.groups().map { it.toModel() }
+            val storedGroupMsgs = dao.groupMsgs().map { it.toModel() }
             val storedStories = dao.stories().map { it.toModel() }
             val storedFollows = dao.follows()
             withContext(Dispatchers.Main) {
@@ -263,6 +278,11 @@ object World {
                 }
                 dms.clear()
                 dms.addAll(storedDms)
+                groups.clear()
+                groups.addAll(storedGroups)
+                groupMsgs.clear()
+                groupMsgs.addAll(storedGroupMsgs)
+                storedGroups.forEach { groupSeen[it.id] = p.getLong("gseen_${it.id}", 0L) }
                 if (storedStories.isNotEmpty()) {
                     stories.clear()
                     stories.addAll(storedStories)
@@ -893,6 +913,179 @@ object World {
         )
     }
 
+    // ---- group chats -------------------------------------------------------
+
+    /** The room's messages, oldest first. */
+    fun groupMsgsWith(groupId: String): List<GroupMsg> =
+        groupMsgs.filter { it.groupId == groupId }.sortedBy { it.at }
+
+    /** Every room, newest first — what the Messages list shows. */
+    fun groupThreads(): List<GroupThread> =
+        groups.mapNotNull { g ->
+            groupMsgs.filter { it.groupId == g.id }.maxByOrNull { it.at }
+                ?.let { GroupThread(g, it, unreadGroupCount(g.id)) }
+        }.sortedByDescending { it.last.at }
+
+    /** A new room. On a server world the snapshot comes back through sync. */
+    fun createGroup(name: String, topic: String, memberIds: List<String>) {
+        val cleanName = name.trim().take(60)
+        val cleanTopic = topic.trim().take(140)
+        val members = memberIds.filter { it.isNotBlank() }.distinct()
+        if (cleanName.isEmpty() || members.isEmpty()) return
+        if (Server.active) {
+            Server.act(
+                "group_create",
+                JSONObject().put("name", cleanName).put("topic", cleanTopic).put("members", JSONArray(members)),
+            )
+            Server.kick()
+            return
+        }
+        val now = System.currentTimeMillis()
+        val group = Group(
+            id = "local-g-$now",
+            name = cleanName,
+            topic = cleanTopic,
+            members = members,
+            createdAt = now,
+            updatedAt = now,
+        )
+        groups += group
+        persistGroup(group)
+    }
+
+    /** Rename or re-topic a room; the world confirms with a fresh snapshot. */
+    fun updateGroup(groupId: String, name: String, topic: String) {
+        val cleanName = name.trim().take(60)
+        val cleanTopic = topic.trim().take(140)
+        if (cleanName.isEmpty()) return
+        if (Server.active) {
+            Server.act("group_update", JSONObject().put("groupId", groupId).put("name", cleanName).put("topic", cleanTopic))
+        }
+        val index = groups.indexOfFirst { it.id == groupId }
+        if (index < 0) return
+        val updated = groups[index].copy(name = cleanName, topic = cleanTopic, updatedAt = System.currentTimeMillis())
+        groups[index] = updated
+        persistGroup(updated)
+    }
+
+    /** Bring people into the room. */
+    fun addGroupMembers(groupId: String, ids: List<String>) {
+        val clean = ids.filter { it.isNotBlank() }.distinct()
+        if (clean.isEmpty()) return
+        if (Server.active) {
+            Server.act("group_add", JSONObject().put("groupId", groupId).put("personaIds", JSONArray(clean)))
+        }
+        val index = groups.indexOfFirst { it.id == groupId }
+        if (index < 0) return
+        val group = groups[index]
+        val updated = group.copy(members = (group.members + clean).distinct(), updatedAt = System.currentTimeMillis())
+        groups[index] = updated
+        persistGroup(updated)
+    }
+
+    /** Someone steps out of the room. */
+    fun removeGroupMember(groupId: String, personaId: String) {
+        if (Server.active) {
+            Server.act("group_remove", JSONObject().put("groupId", groupId).put("personaId", personaId))
+        }
+        val index = groups.indexOfFirst { it.id == groupId }
+        if (index < 0) return
+        val group = groups[index]
+        if (personaId !in group.members) return
+        val updated = group.copy(members = group.members - personaId, updatedAt = System.currentTimeMillis())
+        groups[index] = updated
+        persistGroup(updated)
+    }
+
+    /** You send to the room; someone answers shortly after — in voice. */
+    fun sendGroupMsg(groupId: String, text: String) {
+        val clean = text.trim()
+        if (clean.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val msg = GroupMsg(
+            id = if (Server.active) "s-gm-${UUID.randomUUID()}" else "local-gm-$now-${postSeq++}",
+            groupId = groupId,
+            authorId = "you",
+            text = clean.take(600),
+            at = now,
+        )
+        groupMsgs += msg
+        persistGroupMsg(msg)
+        markGroupSeen(groupId)
+        if (Server.active) {
+            // They're thinking over there, at their own pace. Three minutes
+            // of dots, then the dots give up — an answer may still land.
+            groupTyping[groupId] = true
+            val mine = msg
+            scope.launch {
+                delay(180_000)
+                val answered = groupMsgs.any { it.groupId == groupId && it.authorId != "you" && it.at > mine.at }
+                if (!answered) withContext(Dispatchers.Main) { groupTyping[groupId] = false }
+            }
+            Server.act("group_send", JSONObject().put("id", msg.id).put("groupId", groupId).put("text", msg.text))
+        } else {
+            scheduleGroupReply(groupId)
+        }
+    }
+
+    private fun scheduleGroupReply(groupId: String) {
+        val group = groups.firstOrNull { it.id == groupId } ?: return
+        val members = group.members.mapNotNull { id -> Cast.people.firstOrNull { it.id == id } }
+        if (members.isEmpty()) return
+        val lastText = groupMsgs.lastOrNull { it.groupId == groupId && it.authorId == "you" }?.text.orEmpty()
+        val tagged = members.firstOrNull { lastText.contains("@${it.handle}", ignoreCase = true) }
+        val responder = tagged ?: members.random()
+        scope.launch {
+            withContext(Dispatchers.Main) { groupTyping[groupId] = true }
+            delay((12_000L..30_000L).random())
+            val history = groupMsgs.filter { it.groupId == groupId }.takeLast(14)
+                .map { (if (it.authorId == "you") "user" else "assistant") to it.text }
+            val reply = Engine.chat(
+                Engine.personaPrompt(responder) + groupPrompt(group, responder),
+                history,
+                maxTokens = 130,
+                model = personaModel(responder.id),
+            )
+            if (reply == null) {
+                withContext(Dispatchers.Main) { groupTyping[groupId] = false }
+                return@launch
+            }
+            deliverGroupMsg(groupId, responder.id, reply)
+        }
+    }
+
+    /** The room, appended to a member's system prompt. */
+    private fun groupPrompt(group: Group, persona: Persona): String = buildString {
+        val others = group.members.filter { it != persona.id }.map { Cast.byId(it).name }
+        append("\nThis is a small group chat on Only Human called \u201C${group.name}\u201D")
+        if (group.topic.isNotEmpty()) append(" — about ${group.topic}")
+        append(". In the room: you")
+        if (others.isNotEmpty()) append(", ${others.joinToString(", ")}")
+        append(", and the human ${me.name}.")
+        append(" Keep replies to one or two short sentences, lowercase where it fits, no name prefixes.")
+    }
+
+    /** Delivers an incoming group message. Safe from any thread. */
+    private suspend fun deliverGroupMsg(groupId: String, personaId: String, text: String, at: Long = System.currentTimeMillis()) {
+        val now = at
+        val persona = Cast.byId(personaId)
+        val msg = GroupMsg(
+            id = "voice-gm-$now-$personaId",
+            groupId = groupId,
+            authorId = personaId,
+            text = text,
+            at = now,
+        )
+        val insideGroup = openGroup == groupId
+        persistGroupMsg(msg)
+        withContext(Dispatchers.Main) {
+            groupTyping[groupId] = false
+            groupMsgs += msg
+            if (insideGroup) markGroupSeen(groupId)
+        }
+        if (!insideGroup) tell(persona.name, text, "group-$groupId")
+    }
+
     // ---- writing, for real -------------------------------------------------
 
     /** First run: the fifteen wake up and post, one by one, for real. */
@@ -1137,6 +1330,19 @@ object World {
 
     fun unreadDmsTotal(): Int = Cast.people.sumOf { unreadDmCount(it.id) }
 
+    fun markGroupSeen(groupId: String) {
+        val now = System.currentTimeMillis()
+        groupSeen[groupId] = now
+        prefs?.edit()?.putLong("gseen_$groupId", now)?.apply()
+    }
+
+    fun unreadGroupCount(groupId: String): Int {
+        val seen = groupSeen[groupId] ?: 0L
+        return groupMsgs.count { it.groupId == groupId && it.authorId != "you" && it.at > seen }
+    }
+
+    fun unreadGroupsTotal(): Int = groups.sumOf { unreadGroupCount(it.id) }
+
     // ---- everything else ---------------------------------------------------
 
     private fun persistReply(reply: Reply) {
@@ -1152,6 +1358,16 @@ object World {
     private fun persistDm(dm: Dm) {
         val db = database ?: return
         scope.launch { db.dao().upsertDm(dm.toEntity()) }
+    }
+
+    private fun persistGroup(group: Group) {
+        val db = database ?: return
+        scope.launch { db.dao().upsertGroup(group.toEntity()) }
+    }
+
+    private fun persistGroupMsg(msg: GroupMsg) {
+        val db = database ?: return
+        scope.launch { db.dao().upsertGroupMsg(msg.toEntity()) }
     }
 
     fun toggleLike(postId: String) {
@@ -1201,6 +1417,8 @@ object World {
             posts.clear()
             replies.clear()
             dms.clear()
+            groups.clear()
+            groupMsgs.clear()
             stories.clear()
             activities.clear()
             commentIntents.clear()
@@ -1215,6 +1433,8 @@ object World {
         dao.wipeActivities()
         dao.wipeFollows()
         dao.wipeDms()
+        dao.wipeGroups()
+        dao.wipeGroupMsgs()
         dao.wipePersonas()
         dao.wipeStories()
     }
@@ -1322,6 +1542,52 @@ object World {
                         markDmSeen(dm.personaId)
                     } else {
                         tell(Cast.byId(dm.personaId).name, dm.text, "dm-${dm.id}")
+                    }
+                }
+            }
+
+            "group" -> {
+                val id = data.optString("id")
+                if (id.isEmpty()) return
+                val rawMembers = data.optJSONArray("members")
+                val members = if (rawMembers != null) {
+                    (0 until rawMembers.length()).mapNotNull { i ->
+                        rawMembers.optString(i).takeIf { it.isNotEmpty() }
+                    }
+                } else {
+                    emptyList()
+                }
+                val group = Group(
+                    id = id,
+                    name = data.optString("name"),
+                    topic = data.optString("topic"),
+                    members = members,
+                    createdAt = data.optLong("createdAt"),
+                    updatedAt = data.optLong("updatedAt"),
+                )
+                val index = groups.indexOfFirst { it.id == id }
+                if (index >= 0) groups[index] = group else groups += group
+                persistGroup(group)
+            }
+
+            "group_msg" -> {
+                val id = data.optString("id")
+                if (id.isEmpty() || groupMsgs.any { it.id == id }) return
+                val msg = GroupMsg(
+                    id = id,
+                    groupId = data.optString("groupId"),
+                    authorId = data.optString("authorId"),
+                    text = data.optString("text"),
+                    at = data.optLong("at"),
+                )
+                groupMsgs += msg
+                persistGroupMsg(msg)
+                if (msg.authorId != "you") {
+                    groupTyping[msg.groupId] = false
+                    if (openGroup == msg.groupId) {
+                        markGroupSeen(msg.groupId)
+                    } else {
+                        tell(Cast.byId(msg.authorId).name, msg.text, "group-${msg.groupId}")
                     }
                 }
             }
@@ -1512,6 +1778,40 @@ private fun DmEntity.toModel() = Dm(
     id = id,
     personaId = personaId,
     fromMe = fromMe,
+    text = text,
+    at = at,
+)
+
+private fun Group.toEntity() = GroupEntity(
+    id = id,
+    name = name,
+    topic = topic,
+    members = members.joinToString(","),
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+private fun GroupEntity.toModel() = Group(
+    id = id,
+    name = name,
+    topic = topic,
+    members = members.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+private fun GroupMsg.toEntity() = GroupMsgEntity(
+    id = id,
+    groupId = groupId,
+    authorId = authorId,
+    text = text,
+    at = at,
+)
+
+private fun GroupMsgEntity.toModel() = GroupMsg(
+    id = id,
+    groupId = groupId,
+    authorId = authorId,
     text = text,
     at = at,
 )

@@ -44,7 +44,10 @@ import com.only.human.screens.DiscoverScreen
 import com.only.human.screens.DmScreen
 import com.only.human.screens.EngineScreen
 import com.only.human.screens.FeedScreen
+import com.only.human.screens.GroupChatScreen
+import com.only.human.screens.GroupSettingsScreen
 import com.only.human.screens.MessagesScreen
+import com.only.human.screens.NewGroupScreen
 import com.only.human.screens.NotificationsScreen
 import com.only.human.screens.PersonModelScreen
 import com.only.human.screens.PostPage
@@ -63,6 +66,9 @@ sealed interface Route {
     data class PersonModel(val id: String) : Route
     data class Post(val id: String) : Route
     data class Dm(val id: String) : Route
+    data class Group(val id: String) : Route
+    data object GroupNew : Route
+    data class GroupSettingsRoute(val id: String) : Route
     data object Messages : Route
     data object Settings : Route
     data object Engine : Route
@@ -110,7 +116,7 @@ fun AppShell() {
     BackHandler(enabled = nav.stack.isNotEmpty()) { nav.pop() }
 
     // Everything unseen lives behind the Activity tab: notifications + DMs.
-    val activityBadge = World.unreadActivityCount() + World.unreadDmsTotal()
+    val activityBadge = World.unreadActivityCount() + World.unreadDmsTotal() + World.unreadGroupsTotal()
     val tabs = listOf(
         TabSpec("Feed", OhIcons.Home),
         TabSpec("Discover", OhIcons.Search),
@@ -210,9 +216,27 @@ fun AppShell() {
                         personaId = route.id,
                         onBack = { nav.pop() },
                     )
+                    is Route.Group -> GroupChatScreen(
+                        groupId = route.id,
+                        onBack = { nav.pop() },
+                        onOpenInfo = { nav.push(Route.GroupSettingsRoute(route.id)) },
+                    )
+                    Route.GroupNew -> NewGroupScreen(
+                        onBack = { nav.pop() },
+                        onCreate = { name, topic, ids ->
+                            World.createGroup(name, topic, ids)
+                            nav.pop()
+                        },
+                    )
+                    is Route.GroupSettingsRoute -> GroupSettingsScreen(
+                        groupId = route.id,
+                        onBack = { nav.pop() },
+                    )
                     Route.Messages -> MessagesScreen(
                         onBack = { nav.pop() },
                         onOpenDm = { nav.push(Route.Dm(it)) },
+                        onOpenGroup = { nav.push(Route.Group(it)) },
+                        onNewGroup = { nav.push(Route.GroupNew) },
                     )
                     Route.Settings -> SettingsScreen(
                         onBack = { nav.pop() },

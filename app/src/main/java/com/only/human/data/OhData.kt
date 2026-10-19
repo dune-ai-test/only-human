@@ -66,6 +66,28 @@ data class DmEntity(
     val at: Long,
 )
 
+/** A group chat, as it lives on disk. */
+@Entity(tableName = "groups")
+data class GroupEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val topic: String,
+    /** The member persona ids, comma-joined. */
+    val members: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+/** One group message, as it lives on disk. */
+@Entity(tableName = "group_msgs")
+data class GroupMsgEntity(
+    @PrimaryKey val id: String,
+    val groupId: String,
+    val authorId: String,
+    val text: String,
+    val at: Long,
+)
+
 /** A persona you created, as it lives on disk. */
 @Entity(tableName = "personas")
 data class PersonaEntity(
@@ -141,6 +163,18 @@ interface OhDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDm(item: DmEntity)
 
+    @Query("SELECT * FROM groups ORDER BY createdAt ASC")
+    suspend fun groups(): List<GroupEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertGroup(item: GroupEntity)
+
+    @Query("SELECT * FROM group_msgs ORDER BY at ASC")
+    suspend fun groupMsgs(): List<GroupMsgEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertGroupMsg(item: GroupMsgEntity)
+
     @Query("SELECT * FROM personas ORDER BY createdAt ASC")
     suspend fun personas(): List<PersonaEntity>
 
@@ -175,6 +209,12 @@ interface OhDao {
     @Query("DELETE FROM dms")
     suspend fun wipeDms()
 
+    @Query("DELETE FROM groups")
+    suspend fun wipeGroups()
+
+    @Query("DELETE FROM group_msgs")
+    suspend fun wipeGroupMsgs()
+
     @Query("DELETE FROM personas")
     suspend fun wipePersonas()
 
@@ -183,8 +223,8 @@ interface OhDao {
 }
 
 @Database(
-    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class, ReplyEntity::class, DmEntity::class, PersonaEntity::class, StoryEntity::class],
-    version = 6,
+    entities = [PostEntity::class, FollowEntity::class, ActivityEntity::class, ReplyEntity::class, DmEntity::class, PersonaEntity::class, StoryEntity::class, GroupEntity::class, GroupMsgEntity::class],
+    version = 7,
     exportSchema = false,
 )
 abstract class OhDatabase : RoomDatabase() {
@@ -273,11 +313,34 @@ abstract class OhDatabase : RoomDatabase() {
             }
         }
 
+        /** v7: group chats — small rooms where the cast answers together. */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS groups (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "name TEXT NOT NULL, " +
+                        "topic TEXT NOT NULL, " +
+                        "members TEXT NOT NULL DEFAULT '', " +
+                        "createdAt INTEGER NOT NULL, " +
+                        "updatedAt INTEGER NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS group_msgs (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "groupId TEXT NOT NULL, " +
+                        "authorId TEXT NOT NULL, " +
+                        "text TEXT NOT NULL, " +
+                        "at INTEGER NOT NULL)",
+                )
+            }
+        }
+
         fun get(context: Context): OhDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room
                     .databaseBuilder(context.applicationContext, OhDatabase::class.java, "only-human.db")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     // Nightlies may change the schema freely; pre-1.0 nothing on disk is precious.
                     .fallbackToDestructiveMigration()
                     .build()

@@ -72,7 +72,7 @@ fun NotificationsScreen(
                         .size(22.dp)
                         .iosClickable(scaleTo = 0.88f, haptic = tick, onClick = onOpenMessages),
                 )
-                if (World.unreadDmsTotal() > 0) {
+                if (World.unreadDmsTotal() + World.unreadGroupsTotal() > 0) {
                     Box(
                         Modifier
                             .align(Alignment.TopEnd)
