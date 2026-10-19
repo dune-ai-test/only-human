@@ -31,7 +31,13 @@ export default {
       } catch {
         db = false;
       }
-      return json({ ok: true, db, tables, t: Date.now() });
+      return json({
+        ok: true,
+        db,
+        tables,
+        vars: { endpoint: Boolean(env.DEFAULT_ENDPOINT), model: Boolean(env.DEFAULT_MODEL) },
+        t: Date.now(),
+      });
     }
     // The site: a quiet landing page, and the console window into a world.
     if (req.method === "GET" || req.method === "HEAD") {

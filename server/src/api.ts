@@ -543,6 +543,14 @@ export async function handleExport(env: Env, body: Record<string, unknown>): Pro
     const res = await env.DB.prepare(`SELECT * FROM ${tb} WHERE world_id = ?`).bind(world.id).all();
     out[tb] = res.results;
   }
+  // `full` adds the internals — the scheduler queue and the sync feed — for
+  // diagnosing a world that is quiet when it should not be.
+  if (body["full"] === true) {
+    for (const tb of ["jobs", "outbox", "commands"] as const) {
+      const res = await env.DB.prepare(`SELECT * FROM ${tb} WHERE world_id = ?`).bind(world.id).all();
+      out[tb] = res.results;
+    }
+  }
   const { api_key: _apiKey, ...worldSafe } = world;
   return json({ world: worldSafe, ...out });
 }
