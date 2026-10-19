@@ -176,10 +176,10 @@ function buildSystem(world: WorldRow, t: number): string {
     quiet
       ? "This is the middle of the night in their shared time. Most of them are asleep; one or two night owls may still be up. Keep it quiet."
       : `It is ${phase}. Some are out, some are working, some are home.`,
-    "Write where each person is and what they are doing at this minute.",
-    "Be specific and physical: a room, a street, a task, a small interruption. Use 4 to 14 words for doing.",
+    "Write where each person is and what they are doing at this minute. Be specific: a room, a street, a task, a small interruption.",
+    "Write 5 to 16 words for doing, in complete, natural phrases. Keep the small words - never telegram style.",
     "Not everyone is doing something interesting. People wait, commute, work, eat, queue, and fall asleep on the sofa.",
-    "Keep it physically plausible. Use simple, correct actions; if you are not sure how a tool, instrument, or machine works, pick a simpler task instead of inventing a detail.",
+    "Keep it physically plausible. Avoid brand names, measurements, and technical parts; if a hobby needs a specific tool to make sense, choose a simpler action.",
     "Keep each person in or near their own city. Do not invent drama, weather events, or meetings with other people unless their recent post implies it.",
     "Never mention the app or the content they make. Do not use the words post, posting, story, feed, app, online, phone, or being watched. Describe their life, not their timeline.",
     "Do not use the person's name in doing.",
