@@ -137,7 +137,11 @@ Rules decide when and what kind; the model only writes the words.
   ignores.
 - `POST /v1/act` `{worldId, key, action, payload, commandId}` — post, reply,
   dm, follow, like, approve, skip, set_model, budget, note, note_remove,
-  create_persona, create_org. Idempotent by commandId.
+  create_persona, draft_profile, create_org. Idempotent by commandId.
+  `draft_profile` (`{kind: "person" | "org", description}`) returns a
+  model-written profile for the add form; `create_org` accepts a known
+  `preset` or a custom `{name, handle, city, bio, feedUrl}` whose feed is
+  fetched before it is saved.
 - `POST /v1/notes` — the active world notes, newest first.
 - `POST /v1/export` — full JSON dump of a world.
 - `POST /v1/delete` `{…, confirm:"delete"}` — hard delete.
@@ -204,7 +208,14 @@ email.
   RSS/Atom feeds, at most one headline post per world every 90 minutes, with
   the exact title, source and original link. The model never writes news;
   fetch/parse failure means no post. Worlds seed The Guardian and BBC News;
-  NPR and Al Jazeera can be added from the site's right rail.
+  NPR and Al Jazeera can be added from the site's right rail, and the Add
+  sheet accepts any real publication from a description plus its public feed.
+  A custom feed is fetched and parsed before the org is saved.
+- **Describe-to-fill — implemented.** Both Add sheets take a free-form
+  description. `draft_profile` writes the visible profile fields only — name,
+  handle, occupation, city, bio, voice for a person; name, handle, city, bio,
+  monogram for a newsroom. The human reviews and edits before saving. A failed
+  draft writes nothing; a model failure is never filled with template text.
 - A cron pulling weather for the world's cities → `context` rows is still
   later; the store and prompt path are ready for it.
 

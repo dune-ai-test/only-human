@@ -9,7 +9,7 @@
 
 import { insertPost, push } from "./db";
 import type { Env, OrgRow, WorldRow } from "./types";
-import { now } from "./util";
+import { newId, now } from "./util";
 
 export interface OrgPreset {
   id: string;
@@ -146,6 +146,113 @@ function orgPayload(org: OrgRow): Record<string, unknown> {
   };
 }
 
+export { orgPayload };
+
+/** Insert a real newsroom from a feed the human supplied. */
+export interface CustomOrgInput {
+  name: string;
+  handle: string;
+  city: string;
+  bio: string;
+  feedUrl: string;
+  monogram: string;
+  color: string;
+}
+
+const CUSTOM_ORG_COLORS = [
+  "#0A84FF",
+  "#30B0C7",
+  "#34C759",
+  "#FF9F0A",
+  "#FF375F",
+  "#BF5AF2",
+  "#5E5CE6",
+  "#8E8E93",
+];
+
+function styleHash(value: string): number {
+  let n = 0;
+  for (let i = 0; i < value.length; i++) n = (n * 31 + value.charCodeAt(i)) >>> 0;
+  return n;
+}
+
+function initials(name: string): string {
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, " ").split(/\s+/).filter(Boolean);
+  if (!words.length) return "N";
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+  return words.slice(0, 4).map((w) => w[0]).join("").toUpperCase();
+}
+
+function colorFor(name: string): string {
+  return CUSTOM_ORG_COLORS[styleHash(name) % CUSTOM_ORG_COLORS.length];
+}
+
+export async function addCustomOrg(
+  env: Env,
+  world: WorldRow,
+  input: CustomOrgInput,
+): Promise<{ org: OrgRow; created: boolean } | { error: string }> {
+  await ensureNewsSchema(env);
+
+  const sameFeed = await env.DB.prepare(
+    "SELECT * FROM orgs WHERE world_id = ? AND feed_url = ? AND active = 1 LIMIT 1",
+  )
+    .bind(world.id, input.feedUrl)
+    .first<OrgRow>();
+  if (sameFeed) return { org: sameFeed, created: false };
+
+  const sameHandle = await env.DB.prepare(
+    "SELECT 1 FROM orgs WHERE world_id = ? AND lower(handle) = lower(?) AND active = 1 LIMIT 1",
+  )
+    .bind(world.id, input.handle)
+    .first();
+  if (sameHandle) return { error: "that handle is already here" };
+
+  const personHandle = await env.DB.prepare(
+    "SELECT 1 FROM personas WHERE world_id = ? AND lower(handle) = lower(?) LIMIT 1",
+  )
+    .bind(world.id, input.handle)
+    .first();
+  if (personHandle) return { error: "that handle is already here" };
+
+  const items = await readFeed(input.feedUrl).catch(() => []);
+  if (!items.length) {
+    return { error: "that feed did not answer with any headlines" };
+  }
+
+  const t = now();
+  const id = newId("org");
+  const monogram = input.monogram.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 4) || initials(input.name);
+  const color = /^#[0-9a-f]{6}$/i.test(input.color) ? input.color : colorFor(input.name);
+  const ins = await env.DB.prepare(
+    "INSERT OR IGNORE INTO orgs (world_id, id, name, handle, kind, bio, city, color, monogram, feed_url, active, created_at, last_fetch_at, last_post_at) VALUES (?, ?, ?, ?, 'news', ?, ?, ?, ?, ?, 1, ?, 0, 0)",
+  )
+    .bind(
+      world.id,
+      id,
+      input.name,
+      input.handle,
+      input.bio,
+      input.city,
+      color,
+      monogram,
+      input.feedUrl,
+      t,
+    )
+    .run();
+  const org = await getOrg(env, world.id, id);
+  if (!org) return { error: "the newsroom could not be saved" };
+  const created = (ins.meta.changes ?? 0) > 0;
+  if (created) {
+    await push(env, world.id, "persona", orgPayload(org));
+    // Let the next heartbeat look at the new feed immediately.
+    await env.DB.prepare("DELETE FROM context WHERE world_id = ? AND id = 'news:meta'")
+      .bind(world.id)
+      .run();
+  }
+  return { org, created };
+}
+
 /** Add one of the known newsrooms. Returns null for an unknown preset. */
 export async function addPresetOrg(
   env: Env,
@@ -278,8 +385,8 @@ export function parseFeed(xml: string): FeedItem[] {
   return items.sort((a, b) => b.publishedAt - a.publishedAt);
 }
 
-async function fetchFeed(org: OrgRow): Promise<FeedItem[]> {
-  if (!org.feed_url) return [];
+async function readFeed(feedUrl: string): Promise<FeedItem[]> {
+  if (!feedUrl) return [];
   const init: RequestInit & { cf?: unknown } = {
     headers: {
       accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
@@ -287,9 +394,14 @@ async function fetchFeed(org: OrgRow): Promise<FeedItem[]> {
     },
     cf: { cacheTtl: 600, cacheEverything: true },
   };
-  const res = await fetch(org.feed_url, init);
+  const res = await fetch(feedUrl, init);
   if (!res.ok) return [];
   return parseFeed(await res.text());
+}
+
+async function fetchFeed(org: OrgRow): Promise<FeedItem[]> {
+  if (!org.feed_url) return [];
+  return readFeed(org.feed_url);
 }
 
 // ---- posting -------------------------------------------------------------

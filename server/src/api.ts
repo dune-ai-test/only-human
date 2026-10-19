@@ -22,8 +22,10 @@ import {
   schedule,
   setFollow,
 } from "./db";
-import { addPresetOrg, ensureNewsSchema, ensureSeedOrgs, getOrg } from "./news";
+import { addCustomOrg, addPresetOrg, ensureNewsSchema, ensureSeedOrgs, getOrg, getOrgs, orgPayload } from "./news";
 import { getPresence } from "./presence";
+import { draftOrgAsk, draftPersonAsk } from "./prompts";
+import { writeRaw } from "./engine";
 import type { AskRow, Env, PostRow, ReplyRow, WorldRow } from "./types";
 import { clamp, dayKey, hashKey, newId, newRecoveryKey, now, QUIET_FROM_MIN, QUIET_TO_MIN, randInt, sameHash, json } from "./util";
 
@@ -83,6 +85,152 @@ function parsePersona(raw: Record<string, unknown>, fallbackId: string, custom =
     joinedYear: str(raw["joinedYear"]).trim(),
     followerBoost: Number.isFinite(boost) ? Math.round(boost) : 0,
     custom: custom ? 1 : 0,
+  };
+}
+
+// ---- profiles written from a human description --------------------------
+
+const DRAFT_LIMIT = 700;
+
+function cleanHandle(value: unknown): string {
+  return str(value)
+    .trim()
+    .replace(/^@+/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, 30);
+}
+
+function handleFromName(name: string): string {
+  return name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 24);
+}
+
+async function uniqueHandle(env: Env, world: WorldRow, kind: "person" | "org", wanted: string): Promise<string> {
+  const base = wanted || "neighbor";
+  const personas = await env.DB.prepare("SELECT handle FROM personas WHERE world_id = ?")
+    .bind(world.id)
+    .all<{ handle: string }>();
+  let orgHandles: string[] = [];
+  try {
+    await ensureNewsSchema(env);
+    const orgs = await env.DB.prepare("SELECT handle FROM orgs WHERE world_id = ? AND active = 1")
+      .bind(world.id)
+      .all<{ handle: string }>();
+    orgHandles = orgs.results.map((o) => o.handle);
+  } catch {
+    orgHandles = [];
+  }
+  const taken = new Set([...personas.results.map((p) => p.handle), ...orgHandles].map((h) => h.toLowerCase()));
+  if (!taken.has(base.toLowerCase())) return base;
+  for (let i = 2; i < 100; i++) {
+    const next = `${base}${i}`.slice(0, 30);
+    if (!taken.has(next.toLowerCase())) return next;
+  }
+  return `${base}${Date.now().toString(36)}`.slice(0, 30);
+}
+
+interface DraftPerson {
+  name: string;
+  handle: string;
+  occupation: string;
+  city: string;
+  bio: string;
+  voice: string;
+}
+
+interface DraftOrg {
+  name: string;
+  handle: string;
+  city: string;
+  bio: string;
+  monogram: string;
+  color: string;
+}
+
+type Draft = DraftPerson | DraftOrg;
+
+function parseDraft(raw: string, kind: "person" | "org"): Draft | null {
+  const text = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  let obj: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    obj = parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (str(obj["error"]).trim()) return null;
+
+  const name = str(obj["name"]).replace(/\s+/g, " ").trim().slice(0, 80);
+  if (!name) return null;
+  const handle = cleanHandle(obj["handle"]) || handleFromName(name);
+  if (!handle) return null;
+  const city = str(obj["city"]).replace(/\s+/g, " ").trim().slice(0, 60);
+  const bio = str(obj["bio"]).replace(/\s+/g, " ").trim().slice(0, 220);
+
+  if (kind === "person") {
+    const occupation = str(obj["occupation"]).replace(/\s+/g, " ").trim().slice(0, 80);
+    const voice = str(obj["voice"]).replace(/\s+/g, " ").trim().slice(0, 160);
+    return { name, handle, occupation, city, bio, voice };
+  }
+
+  const monogram =
+    str(obj["monogram"]).replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 4) ||
+    name.replace(/[^\p{L}\p{N} ]/gu, " ").split(/\s+/).filter(Boolean).slice(0, 4).map((w) => w[0]).join("").toUpperCase();
+  const color = /^#[0-9a-f]{6}$/i.test(str(obj["color"])) ? str(obj["color"]) : "";
+  return { name, handle, city, bio, monogram, color };
+}
+
+function publicFeedUrl(raw: string): string {
+  const value = raw.trim().slice(0, 600);
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    const host = url.hostname.toLowerCase();
+    if (!host || host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) return "";
+    if (/^(127\.|10\.|0\.|169\.254\.|192\.168\.)/.test(host)) return "";
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return "";
+    const bare = host.replace(/^\[|\]$/g, "");
+    if (bare.includes(":") && (bare === "::1" || bare.startsWith("fc") || bare.startsWith("fd") || bare.startsWith("fe80"))) {
+      return "";
+    }
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function parseCustomOrg(raw: Record<string, unknown>): {
+  name: string;
+  handle: string;
+  city: string;
+  bio: string;
+  feedUrl: string;
+  monogram: string;
+  color: string;
+} | null {
+  const name = str(raw["name"]).replace(/\s+/g, " ").trim().slice(0, 80);
+  const handle = cleanHandle(raw["handle"]);
+  const city = str(raw["city"]).replace(/\s+/g, " ").trim().slice(0, 60);
+  const bio = str(raw["bio"]).replace(/\s+/g, " ").trim().slice(0, 240);
+  const feedUrl = publicFeedUrl(str(raw["feedUrl"]));
+  if (!name || !handle || !feedUrl) return null;
+  return {
+    name,
+    handle,
+    city,
+    bio,
+    feedUrl,
+    monogram: str(raw["monogram"]).replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 4),
+    color: str(raw["color"]),
   };
 }
 
@@ -509,6 +657,33 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
       return json({ ok: true });
     }
 
+    case "draft_profile": {
+      const kind: "person" | "org" = str(p["kind"]) === "org" ? "org" : "person";
+      const description = str(p["description"]).replace(/\s+/g, " ").trim();
+      if (!description) return json({ error: "describe them first" }, 400);
+      if (description.length > DRAFT_LIMIT) {
+        return json({ error: `keep it under ${DRAFT_LIMIT} characters` }, 400);
+      }
+      const handles = (await getPersonas(env, world.id)).map((x) => x.handle);
+      try {
+        handles.push(...(await getOrgs(env, world.id)).map((x) => x.handle));
+      } catch {
+        // A missing news schema should not block a person draft.
+      }
+      const ask = kind === "person" ? draftPersonAsk(world, description, handles) : draftOrgAsk(description, handles);
+      const raw = await writeRaw(env, world, ask.system, [{ role: "user", content: ask.user }], 500, null, false, 0.55);
+      if (!raw) return json({ error: "the world did not answer" }, 503);
+      const draft = parseDraft(raw, kind);
+      if (!draft) {
+        return json(
+          { error: kind === "org" ? "couldn't place that newsroom — try its name" : "the world answered in a shape I couldn't use" },
+          502,
+        );
+      }
+      draft.handle = await uniqueHandle(env, world, kind, draft.handle);
+      return json({ ok: true, profile: draft });
+    }
+
     case "create_persona": {
       const persona = parsePersona(p, newId("custom"), true);
       if (!persona) return json({ error: "name and handle required" }, 400);
@@ -552,9 +727,16 @@ export async function handleAct(env: Env, body: Record<string, unknown>): Promis
 
     case "create_org": {
       const preset = str(p["preset"]).trim();
-      const result = await addPresetOrg(env, world, preset);
-      if (!result) return json({ error: "unknown newsroom" }, 400);
-      return json({ ok: true, id: result.org.id, duplicate: !result.created });
+      if (preset) {
+        const result = await addPresetOrg(env, world, preset);
+        if (!result) return json({ error: "unknown newsroom" }, 400);
+        return json({ ok: true, id: result.org.id, duplicate: !result.created, profile: orgPayload(result.org) });
+      }
+      const custom = parseCustomOrg(p);
+      if (!custom) return json({ error: "a name, a handle and a public feed URL are required" }, 400);
+      const result = await addCustomOrg(env, world, custom);
+      if ("error" in result) return json({ error: result.error }, 400);
+      return json({ ok: true, id: result.org.id, duplicate: !result.created, profile: orgPayload(result.org) });
     }
 
     default:

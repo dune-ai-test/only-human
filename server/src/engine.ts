@@ -29,6 +29,7 @@ async function complete(
   maxTokens: number,
   personaModel: string | null,
   ambient: boolean,
+  temperature = 0.9,
 ): Promise<string | null> {
   if (world.calls_today >= world.daily_budget) return null;
   if (ambient && world.calls_today >= Math.floor(world.daily_budget * 0.8)) return null;
@@ -47,7 +48,7 @@ async function complete(
     model,
     messages: [{ role: "system", content: system }, ...turns],
     max_tokens: maxTokens,
-    temperature: 0.9,
+    temperature,
     stream: false,
   });
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -105,8 +106,9 @@ export async function writeRaw(
   maxTokens: number,
   personaModel: string | null,
   ambient = false,
+  temperature = 0.9,
 ): Promise<string | null> {
-  const content = await complete(env, world, system, turns, maxTokens, personaModel, ambient);
+  const content = await complete(env, world, system, turns, maxTokens, personaModel, ambient, temperature);
   if (content === null) return null;
   return content.length <= 6000 ? content : content.slice(0, 6000);
 }

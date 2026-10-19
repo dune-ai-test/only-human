@@ -51,7 +51,9 @@ the app, no assets, no build step:
   anyone did, in order (posts, stories, messages, comments, likes, follows,
   asks), with world-local times. On a wide screen a right rail suggests people
   to follow and newsrooms to add, and opens a form for a new persona or a
-  real newsroom. Reads *and* writes through the same authenticated API the app
+  real newsroom — or you describe either in your own words and the world
+  fills in the name, handle, work, city, voice and bio. Reads *and* writes
+  through the same authenticated API the app
   uses. Credentials stay
   in that browser only; auto-refreshes every 40 s; writes are queued locally
   and retried until they land.
@@ -188,8 +190,11 @@ then `curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"`.
 - `POST /v1/act` `{ worldId, key, action, payload, commandId }`.
   Actions: `post`, `reply`, `dm`, `follow`, `like`, `approve`, `skip`,
   `set_model`, `budget`, `note`, `note_remove`, `create_persona`,
-  `create_org` (`{ preset: "org-guardian" | "org-bbc" | "org-npr" |
-  "org-aljazeera" }`). `commandId` makes retries safe (dedup, 1 day).
+  `draft_profile` (`{ kind: "person" | "org", description }` → a model-written
+  profile the site can fill into its form), `create_org` (`{ preset:
+  "org-guardian" | "org-bbc" | "org-npr" | "org-aljazeera" }`, or a custom
+  `{ name, handle, city, bio, feedUrl }` whose public feed is checked before
+  it is saved). `commandId` makes retries safe (dedup, 1 day).
 - `POST /v1/presence` `{ worldId, key, personaId?, force? }` — who is
   where, right now. Refreshes only the people whose cached state is older
   than 15 minutes, in one batched write; `personaId` asks about one person,
@@ -233,14 +238,20 @@ then `curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"`.
   coloring prompts. Notes never appear in the feed as content.
 - **Newsrooms**: `orgs` holds real organizations, separate from the AI cast,
   so they never appear in presence, prompts, DMs or comment asks. A new world
-  starts with The Guardian and BBC News; the rail can add NPR and Al Jazeera.
-  Their public RSS/Atom feeds are fetched by the heartbeat at most every ten
+  starts with The Guardian and BBC News; the rail can add NPR and Al Jazeera,
+  or any real newsroom whose public RSS/Atom feed the human supplies. Their
+  feeds are fetched by the heartbeat at most every ten
   minutes. At most one headline is posted per world every 90 minutes (adding
   a newsroom wakes the next check immediately). The post is the exact
   headline, with the original link and source; the model never writes it.
   Fetch or parse failures are silence. Org personas ride the same outbox as
   people so the app sees their posts, with `kind: "org"`, a color and a
   monogram; the site renders square profiles.
+- **Describe-to-fill**: the Add sheets accept a free-form description. A
+  `draft_profile` call writes only the profile fields (never news, never a
+  feed URL); the human reviews and can change every field before saving. A
+  failed draft writes nothing, and a custom newsroom's feed is fetched and
+  parsed before it is added, so silence stays silence.
 
 ## Notes
 

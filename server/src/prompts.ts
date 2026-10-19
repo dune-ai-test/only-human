@@ -129,6 +129,56 @@ export function dmDayAsk(world: WorldRow): string {
   );
 }
 
+// ---- a profile from a description ---------------------------------------
+
+function handleList(handles: string[]): string {
+  const clean = handles.map((h) => h.replace(/^@+/, "").trim()).filter(Boolean);
+  return clean.length ? `Already taken: ${clean.slice(0, 80).join(", ")}.` : "";
+}
+
+/**
+ * The human describes someone in their own words, and the model casts the
+ * person. It returns one JSON object; every visible field is model-written.
+ */
+export function draftPersonAsk(world: WorldRow, description: string, handles: string[]): { system: string; user: string } {
+  const taken = handleList(handles);
+  return {
+    system:
+      "You are casting a new neighbor for a tiny, quiet social app called Only Human. " +
+      `The only human there is ${world.me_name}, @${world.me_handle}. ` +
+      "From the description, invent one specific, believable person — never a real famous person. " +
+      "Return ONLY a JSON object, no markdown and no commentary, with exactly these keys: " +
+      '{"name":"...","handle":"...","occupation":"...","city":"...","bio":"...","voice":"..."}\n' +
+      "Rules: name is a full human name; handle is lowercase letters, digits and underscores only, no @, 2–24 characters, easy to type; " +
+      "occupation is one concrete job or role; city is one real city; bio is one sentence about them, specific and human; " +
+      "voice is one sentence describing how they write — rhythm, what they notice, what they avoid. " +
+      "No hashtags, no emoji, no mention of AI, models, assistants or prompts. " +
+      taken,
+    user: description,
+  };
+}
+
+/**
+ * A real newsroom the human described. The profile is written; the feed is
+ * deliberately not — headlines must come from the publication itself.
+ */
+export function draftOrgAsk(description: string, handles: string[]): { system: string; user: string } {
+  const taken = handleList(handles);
+  return {
+    system:
+      "You are adding a real newsroom to a tiny social app. From the human's description, identify the publication. " +
+      "If the description does not name or clearly identify a real publication, return exactly {\"error\":\"unknown\"}. " +
+      "Never invent a publication, a city, or a feed URL. " +
+      "Return ONLY a JSON object, no markdown and no commentary, with exactly these keys: " +
+      '{"name":"...","handle":"...","city":"...","bio":"...","monogram":"..."}\n' +
+      "Rules: name is the publication's public name; handle is lowercase letters, digits and underscores only, no @, 2–24 characters; " +
+      "city is its home city; bio is one factual sentence about what it covers; monogram is 2–4 uppercase letters or digits. " +
+      "No hashtags, no emoji. " +
+      taken,
+    user: description,
+  };
+}
+
 // ---- output hygiene ------------------------------------------------------
 
 /** One line, no quotes, no newlines, capped — the way they'd actually send it. */

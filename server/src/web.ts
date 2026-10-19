@@ -609,6 +609,12 @@ body.plain .bar { background: var(--bar-plain); }
 .grow-org:first-child { border-top: 0; }
 .grow-org .mini { margin-left: auto; }
 .grow-note { margin-top: 12px; }
+.grow-desc textarea { min-height: 92px; }
+.grow-fillbar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.grow-fillbar .grow-hint { flex: 1; min-width: 0; margin: 0; }
+.grow-fillbar .mini { flex: 0 0 auto; height: 30px; padding: 0 13px; font-size: 13px; }
+.grow-or { margin: 22px 0 0; padding-top: 17px; border-top: .5px solid var(--sep); }
+.grow-filled { margin-top: 10px; color: var(--green-t); }
 @media (min-width: 980px) {
   .page.window { max-width: 928px; }
   #console {
@@ -2243,14 +2249,14 @@ const WINDOW_JS = `
       state.growBusy = false;
       if (r.status === 200) {
         var id = (r.data && r.data.id) || preset.id;
-        state.personas[id] = {
+        state.personas[id] = (r.data && r.data.profile) || {
           id: id, name: preset.name, handle: preset.handle, bio: preset.bio,
           occupation: preset.occupation, location: preset.city,
           gradient: [preset.color, preset.color], joinedYear: '', followerBoost: 0,
           kind: 'org', monogram: preset.monogram, color: preset.color
         };
         render();
-        if (state.grow === 'org') renderGrow();
+        if (btn) { btn.disabled = true; btn.textContent = 'Added'; btn.className = 'mini ghost'; }
         kickSync(6);
       } else if (btn) {
         btn.disabled = false;
@@ -2262,12 +2268,119 @@ const WINDOW_JS = `
     });
   }
 
+  function fillDraft(kind, fields, desc, btn, note, err, onStyle) {
+    if (state.growBusy) return;
+    var text = desc.value.trim();
+    if (!text) {
+      err.textContent = kind === 'org' ? 'Describe the newsroom first.' : 'Describe them first.';
+      err.hidden = false;
+      desc.focus();
+      return;
+    }
+    err.hidden = true;
+    note.hidden = true;
+    state.growBusy = true;
+    btn.disabled = true;
+    var label = btn.textContent;
+    btn.textContent = 'Writing…';
+    actApi('draft_profile', { kind: kind, description: text }).then(function (r) {
+      state.growBusy = false;
+      btn.disabled = false;
+      btn.textContent = label;
+      if (r.status !== 200 || !r.data || !r.data.profile) {
+        err.textContent = r.data && r.data.error
+          ? 'Not filled — ' + r.data.error + '.'
+          : 'Not filled — the world did not answer.';
+        err.hidden = false;
+        return;
+      }
+      var p = r.data.profile;
+      Object.keys(fields).forEach(function (key) {
+        if (typeof p[key] === 'string' && p[key]) fields[key].value = p[key];
+      });
+      if (onStyle) onStyle(p);
+      note.hidden = false;
+    }).catch(function () {
+      state.growBusy = false;
+      btn.disabled = false;
+      btn.textContent = label;
+      err.textContent = 'Not filled — the world did not answer.';
+      err.hidden = false;
+    });
+  }
+
+  function submitNewOrg(fields, style, btn, err) {
+    if (state.growBusy) return;
+    var name = fields.name.value.trim();
+    var handle = fields.handle.value.trim().replace(/^@+/, '').replace(/[^A-Za-z0-9_]/g, '').toLowerCase();
+    var city = fields.city.value.trim();
+    var bio = fields.bio.value.trim();
+    var feedUrl = fields.feedUrl.value.trim();
+    if (!name || !handle || !feedUrl) {
+      err.textContent = 'A name, a handle and a feed URL — all three.';
+      err.hidden = false;
+      return;
+    }
+    if (feedUrl.indexOf('http://') !== 0 && feedUrl.indexOf('https://') !== 0) {
+      err.textContent = 'The feed needs a full http:// or https:// address.';
+      err.hidden = false;
+      return;
+    }
+    err.hidden = true;
+    state.growBusy = true;
+    btn.disabled = true;
+    btn.textContent = 'Checking the feed…';
+    actApi('create_org', {
+      name: name, handle: handle, city: city, bio: bio, feedUrl: feedUrl,
+      monogram: style.monogram || '', color: style.color || ''
+    }).then(function (r) {
+      state.growBusy = false;
+      if (r.status === 200) {
+        var id = r.data && r.data.id;
+        if (id) {
+          state.personas[id] = (r.data && r.data.profile) || {
+            id: id, name: name, handle: handle, bio: bio, occupation: 'newsroom',
+            location: city, voice: 'newsroom',
+            gradient: [style.color || '#8E8E93', style.color || '#8E8E93'],
+            joinedYear: '', followerBoost: 0, kind: 'org',
+            monogram: style.monogram || name.slice(0, 3).toUpperCase(),
+            color: style.color || '#8E8E93'
+          };
+          closeGrow();
+          switchTab('people');
+          render();
+          kickSync(6);
+          return;
+        }
+      }
+      btn.disabled = false;
+      btn.textContent = 'Add the newsroom';
+      err.textContent = r.data && r.data.error
+        ? 'Not added — ' + r.data.error + '.'
+        : 'Not added — the world did not answer.';
+      err.hidden = false;
+    }).catch(function () {
+      state.growBusy = false;
+      btn.disabled = false;
+      btn.textContent = 'Add the newsroom';
+      err.textContent = 'Not added — the world did not answer.';
+      err.hidden = false;
+    });
+  }
+
   function renderGrow() {
     var sheet = $('grow-sheet');
     if (!sheet || sheet.hidden) return;
     var mode = state.grow || 'person';
     var body = $('grow-body');
     body.textContent = '';
+    var fields = {};
+    function addField(host, key, label, placeholder, max, area) {
+      var f = growField(label, 'grow-' + key, placeholder, max, area);
+      fields[key] = f.input;
+      host.appendChild(f.wrap);
+      return f.input;
+    }
     $('grow-title').textContent = mode === 'org' ? 'Add a newsroom' : 'Add a person';
     $('grow-sub').textContent = mode === 'org'
       ? 'A square profile, with real headlines from a public feed.'
@@ -2295,27 +2408,83 @@ const WINDOW_JS = `
         list.appendChild(row);
       });
       body.appendChild(list);
+
+      var or = el('div', 'grow-or');
+      or.appendChild(el('h3', 'sheet-k', 'Describe a newsroom'));
+      or.appendChild(el('p', 't-foot sec', 'A real one. We fill the profile; you paste its public feed.'));
+      body.appendChild(or);
+
+      var form = el('div', 'grow-form');
+      var desc = addField(form, 'description', 'What is it?',
+        'A small independent climate newsroom in Nairobi.', 600, true);
+      desc.rows = 3;
+      var fillbar = el('div', 'grow-fillbar');
+      fillbar.appendChild(el('p', 't-foot sec grow-hint', 'Name, handle, city, bio.'));
+      var fillBtn = el('button', 'mini', 'Fill the profile');
+      fillbar.appendChild(fillBtn);
+      form.appendChild(fillbar);
+      var filled = el('p', 't-foot grow-filled', 'Filled from your description. Change anything.');
+      filled.hidden = true;
+      form.appendChild(filled);
+
+      addField(form, 'name', 'Name', 'The Nairobi Chronicle', 80, false);
+      var orgHandle = addField(form, 'handle', 'Handle', 'nairobichronicle', 30, false);
+      orgHandle.autocapitalize = 'off';
+      orgHandle.spellcheck = false;
+      addField(form, 'city', 'City', 'Nairobi', 60, false);
+      var orgBio = addField(form, 'bio', 'A line about it', 'What it covers, in a sentence.', 220, true);
+      orgBio.rows = 2;
+      var feed = addField(form, 'feedUrl', 'Public RSS / Atom feed', 'https://example.com/feed.xml', 300, false);
+      feed.type = 'url';
+      feed.autocapitalize = 'off';
+      feed.spellcheck = false;
+      feed.inputMode = 'url';
+
+      var orgErr = el('p', 't-foot err');
+      orgErr.hidden = true;
+      var orgBtn = el('button', 'btn', 'Add the newsroom');
+      var style = { monogram: '', color: '' };
+      fillBtn.addEventListener('click', function () {
+        fillDraft('org', fields, desc, fillBtn, filled, orgErr, function (p) {
+          style.monogram = p.monogram || '';
+          style.color = p.color || '';
+        });
+      });
+      orgBtn.addEventListener('click', function () { submitNewOrg(fields, style, orgBtn, orgErr); });
+      form.appendChild(orgErr);
+      form.appendChild(orgBtn);
+      body.appendChild(form);
       return;
     }
 
     var form = el('div', 'grow-form');
-    var fields = {};
-    function addField(key, label, placeholder, max, area) {
-      var f = growField(label, 'grow-' + key, placeholder, max, area);
-      fields[key] = f.input;
-      form.appendChild(f.wrap);
-    }
-    addField('name', 'Name', 'Rosa', 60, false);
-    addField('handle', 'Handle', 'rosa', 30, false);
-    addField('occupation', 'Occupation', 'sound engineer', 80, false);
-    addField('city', 'City', 'Lisbon', 60, false);
-    addField('bio', 'A line about them', 'What they are like, in a sentence.', 200, true);
-    addField('voice', 'How they sound (optional)', 'warm, specific, notices small things', 140, false);
+    var desc = addField(form, 'description', 'Describe them',
+      'A retired fisherman in Kochi who writes about the sea and misses his daughter.', 600, true);
+    desc.rows = 3;
+    var fillbar = el('div', 'grow-fillbar');
+    fillbar.appendChild(el('p', 't-foot sec grow-hint', 'The rest gets written from this.'));
+    var fillBtn = el('button', 'mini', 'Fill the details');
+    fillbar.appendChild(fillBtn);
+    form.appendChild(fillbar);
+    var filled = el('p', 't-foot grow-filled', 'Filled from your description. Change anything.');
+    filled.hidden = true;
+    form.appendChild(filled);
+
+    addField(form, 'name', 'Name', 'Rosa', 60, false);
+    addField(form, 'handle', 'Handle', 'rosa', 30, false);
+    addField(form, 'occupation', 'Occupation', 'sound engineer', 80, false);
+    addField(form, 'city', 'City', 'Lisbon', 60, false);
+    var bio = addField(form, 'bio', 'A line about them', 'What they are like, in a sentence.', 200, true);
+    bio.rows = 2;
+    addField(form, 'voice', 'How they sound (optional)', 'warm, specific, notices small things', 140, false);
     fields.handle.autocapitalize = 'off';
     fields.handle.spellcheck = false;
     var err = el('p', 't-foot err');
     err.hidden = true;
     var btn = el('button', 'btn', 'Add to the world');
+    fillBtn.addEventListener('click', function () {
+      fillDraft('person', fields, desc, fillBtn, filled, err);
+    });
     btn.addEventListener('click', function () { submitNewPerson(fields, btn, err); });
     form.appendChild(err);
     form.appendChild(btn);
